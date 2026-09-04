@@ -24,6 +24,7 @@ add_library(itantra-native SHARED
     vad/silero_vad.cpp
     vad/vad_pipeline.cpp
     asr/asr_engine.cpp
+    asr/mel_features.cpp
     tts/tts_engine.cpp
 )
 
@@ -78,11 +79,20 @@ if(BUILD_TESTING)
     target_compile_options(vad_pipeline_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
     target_link_options(vad_pipeline_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
   endif()
+  add_executable(mel_features_test tests/mel_features_test.cpp asr/mel_features.cpp)
+  target_link_libraries(mel_features_test PRIVATE GTest::gtest_main)
+  target_include_directories(mel_features_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_options(mel_features_test PRIVATE -Wall -Wextra -Wpedantic -Werror -O2 -fvisibility=hidden)
+  if(SANITIZE)
+    target_compile_options(mel_features_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(mel_features_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
+  endif()
   include(GoogleTest)
   gtest_discover_tests(ring_buffer_test)
   gtest_discover_tests(silero_vad_test)
   gtest_discover_tests(audio_capture_test)
   gtest_discover_tests(vad_pipeline_test)
+  gtest_discover_tests(mel_features_test)
 endif()
 
 # PRD 4.1.2 compiler constraints
