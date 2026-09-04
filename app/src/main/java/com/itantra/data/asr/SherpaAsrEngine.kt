@@ -31,16 +31,31 @@ class SherpaAsrEngine(
     }
     fun isMock(): Boolean = !isRealInference()
 
+    private fun resolveModelFiles(): Pair<File, File>? {
+        val candidates = listOf(
+            modelDir,
+            "app/src/main/assets/models/stt/hi",
+            "src/main/assets/models/stt/hi",
+            "D:/SIH 2026/itantra/app/src/main/assets/models/stt/hi"
+        ).distinct()
+        for (c in candidates) {
+            val m = File("$c/indic_conformer_hi_int8.onnx")
+            val t = File("$c/tokens.txt")
+            if (m.exists() && t.exists()) return m to t
+        }
+        return null
+    }
+
     override fun load(language: Language): Result<Unit> {
         // Only Hindi supported for this slice (single language)
         if (language != Language.HINDI) {
             return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI in this slice"))
         }
-        val modelFile = File("$modelDir/indic_conformer_hi_int8.onnx")
-        val tokensFile = File("$modelDir/tokens.txt")
-        if (!modelFile.exists() || !tokensFile.exists()) {
+        val resolved = resolveModelFiles()
+        if (resolved == null) {
             return Result.failure(IllegalStateException("Model not found at $modelDir"))
         }
+        val (modelFile, tokensFile) = resolved
         val size = modelFile.length()
         if (size < 120L * 1024 * 1024 || size > 188L * 1024 * 1024) {
             // Allow 134MB as valid, but if outside 120-188, still try
