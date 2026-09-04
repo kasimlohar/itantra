@@ -47,7 +47,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_itantra_data_audio_NativeAudioBridge_
 
 `createBridge` does `new AudioVadBridge{}` with `capture(8192)`, `vad.load("app/src/main/assets/models/vad/silero_vad.onnx")` (ignore failure for host), `fsm(450)`, `pipeline(capture->ring(), *vad, *fsm)`, returns `reinterpret_cast<jlong>(ptr)`. All others `reinterpret_cast<AudioVadBridge*>(handle)` check null.
 
-- [ ] **Step 1: Write audio_vad_bridge.h**
+- [x] **Step 1: Write audio_vad_bridge.h**
 
 ```cpp
 #pragma once
@@ -67,7 +67,7 @@ struct AudioVadBridge {
 }}
 ```
 
-- [ ] **Step 2: Write audio_vad_bridge.cpp**
+- [x] **Step 2: Write audio_vad_bridge.cpp**
 
 ```cpp
 #include "audio/audio_vad_bridge.h"
@@ -79,11 +79,11 @@ using namespace itantra::bridge;
 AudioVadBridge::AudioVadBridge(): capture(std::make_unique<audio::AudioCapture>(8192)), vad(std::make_unique<vad::SileroVad>()), fsm(std::make_unique<VadFsm>()), pipeline(std::make_unique<vad::VadPipeline>(capture->ring(), *vad, *fsm)) { vad->load("app/src/main/assets/models/vad/silero_vad.onnx"); }
 ```
 
-- [ ] **Step 3: Write native-lib.cpp JNI**
+- [x] **Step 3: Write native-lib.cpp JNI**
 
 Replace `hello` stub with 7 JNI exports as above, each `reinterpret_cast`, `return` appropriate, no `FindClass` in hot path.
 
-- [ ] **Step 4: Update CMakeLists.txt**
+- [x] **Step 4: Update CMakeLists.txt**
 
 ```cmake
 add_library(itantra-native SHARED ... audio/audio_vad_bridge.cpp)
@@ -124,11 +124,11 @@ class NativeAudioBridge : AutoCloseable {
 
 Pumping: explicit `process()` (not background thread) for testability; `VadPipeline` consumer is called from Kotlin thread, not audio thread (keeps audio thread lean). `getVadState` maps `int` ordinal to `VadState`.
 
-- [ ] **Step 1: Write NativeAudioBridge.kt**
+- [x] **Step 1: Write NativeAudioBridge.kt**
 
 Exact as above, `handle` check `if(handle==0L) return false`, `close` idempotent.
 
-- [ ] **Step 2: Verify compiles**
+- [x] **Step 2: Verify compiles**
 
 Run: `./gradlew :app:compileDebugKotlin` Expected: OK (JNI `external` no impl needed)
 
@@ -153,7 +153,7 @@ For pure JUnit without device, `startCapture()` on host will return `false` (no 
 
 Simplify: Tests will be `testDebugUnitTest` with `System.loadLibrary` guarded by `try/catch`, and `startCapture` will be mocked to return `true` via `handle!=0` check, so tests pass on host without real mic.
 
-- [ ] **Step 1: Write NativeAudioBridgeTest.kt**
+- [x] **Step 1: Write NativeAudioBridgeTest.kt**
 
 ```kotlin
 package com.itantra.data.audio
@@ -166,7 +166,7 @@ class NativeAudioBridgeTest {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `./gradlew :app:testDebugUnitTest --tests "*NativeAudioBridgeTest"` Expected: FAIL — `Unresolved reference: NativeAudioBridge` (and `UnsatisfiedLinkError` if library not yet built)
 
@@ -182,15 +182,15 @@ Run: `./gradlew :app:testDebugUnitTest --tests "*NativeAudioBridgeTest"` Expecte
 
 Implementation sketch already in Task 1/2.
 
-- [ ] **Step 1: Implement native-lib.cpp JNI**
+- [x] **Step 1: Implement native-lib.cpp JNI**
 
 Each function `reinterpret_cast<AudioVadBridge*>(handle)` check `if(!ptr) return false/0`, delegate to `ptr->capture->start()` etc. For `process`, call `ptr->pipeline->processOne()` or `processAll()`.
 
-- [ ] **Step 2: Implement NativeAudioBridge.kt to delegate via handle**
+- [x] **Step 2: Implement NativeAudioBridge.kt to delegate via handle**
 
 `fun startCapture(): Boolean = if(handle==0L) false else startCapture(handle)` etc.
 
-- [ ] **Step 3: Run GREEN**
+- [x] **Step 3: Run GREEN**
 
 Run: `./gradlew :app:testDebugUnitTest --tests "*NativeAudioBridgeTest"` Expected: PASS (host `startCapture` may return false but not crash, `process` returns 0 when ring empty)
 Run: `./gradlew :app:testDebugUnitTest --rerun-tasks` Expected: 112 Kotlin still green + 5 new =117
@@ -200,23 +200,23 @@ Run: `./gradlew :app:testDebugUnitTest --rerun-tasks` Expected: 112 Kotlin still
 **Files:**
 - None (verification only)
 
-- [ ] **Step 1: Host GTest all green**
+- [x] **Step 1: Host GTest all green**
 
 Run: `ctest --test-dir build/host --output-on-failure` Expected: `ring_buffer 9 + silero 9 + audio_capture 5 + vad_pipeline 6 =29` PASSED
 
-- [ ] **Step 2: Kotlin 112+5 still green**
+- [x] **Step 2: Kotlin 112+5 still green**
 
 Run: `./gradlew :app:testDebugUnitTest --rerun-tasks` Expected: 117 pass
 
-- [ ] **Step 3: Android debug APK**
+- [x] **Step 3: Android debug APK**
 
 Run: `./gradlew :app:assembleDebug` Expected: `BUILD SUCCESSFUL`, `lib/arm64-v8a/libitantra-native.so` contains `AudioVadBridge` symbols, `compile_commands.json` shows ASAN/UBSAN
 
-- [ ] **Step 4: No INTERNET**
+- [x] **Step 4: No INTERNET**
 
 Run: `aapt dump permissions ... | grep INTERNET` Expected: no output
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src/main/cpp/audio/audio_vad_bridge.h app/src/main/cpp/audio/audio_vad_bridge.cpp app/src/main/cpp/native-lib.cpp app/src/main/cpp/CMakeLists.txt app/src/main/java/com/itantra/data/audio/NativeAudioBridge.kt app/src/test/java/com/itantra/data/audio/NativeAudioBridgeTest.kt docs/superpowers/plans/2026-09-04-phase1-bridge.md
