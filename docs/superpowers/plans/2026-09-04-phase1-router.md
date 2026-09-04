@@ -32,7 +32,7 @@
 - Consumes: `Frame` (`isAlert`, `seqId`, `payloadText`, `srcLang`, `dstLang`)
 - Produces: `data class PlaybackItem(val frame: Frame, val id: Int = frame.seqId, val isAlert: Boolean = frame.isAlert, val text: String = frame.payloadText)` and `sealed class RouteDecision { data class PlayNow(val item: PlaybackItem, val preempted: PlaybackItem? = null): RouteDecision(); data class Enqueue(val item: PlaybackItem): RouteDecision(); object Drop: RouteDecision() }`
 
-- [ ] **Step 1: Write PlaybackItem.kt**
+- [x] **Step 1: Write PlaybackItem.kt**
 
 ```kotlin
 package com.itantra.domain.model
@@ -43,7 +43,7 @@ data class PlaybackItem(val frame: Frame) {
 }
 ```
 
-- [ ] **Step 2: Write RouteDecision.kt**
+- [x] **Step 2: Write RouteDecision.kt**
 
 ```kotlin
 package com.itantra.data.router
@@ -55,7 +55,7 @@ sealed class RouteDecision {
 }
 ```
 
-- [ ] **Step 3: Verify compiles**
+- [x] **Step 3: Verify compiles**
 
 Run: `./gradlew :app:compileDebugKotlin --info` Expected: no errors for new model
 
@@ -86,7 +86,7 @@ Run: `./gradlew :app:compileDebugKotlin --info` Expected: no errors for new mode
 | 12 | `onPlaybackFinished_advancesFromPendingFifo` (standard queue) | AC-05.1 |
 | 13 | `routeReturnsCorrectDecisionType_playNowVsEnqueue` | interface |
 
-- [ ] **Step 1: Write PriorityRouterTest.kt importing non-existent `com.itantra.data.router.PriorityRouter`**
+- [x] **Step 1: Write PriorityRouterTest.kt importing non-existent `com.itantra.data.router.PriorityRouter`**
 
 ```kotlin
 package com.itantra.data.router
@@ -112,7 +112,7 @@ class PriorityRouterTest {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `./gradlew :app:testDebugUnitTest --tests "com.itantra.data.router.PriorityRouterTest"` Expected: FAIL — `Unresolved reference: PriorityRouter` (and `RouteDecision` if separate)
 
@@ -172,11 +172,11 @@ class PriorityRouter {
 
 Note: adjust `pending()` to expose only appropriate view for tests — simplest: `pending(): List<PlaybackItem> = (pendingAlert + pendingStandard)` but tests expect standard pending cleared after alert, and alert enqueue visible. Keep doc.
 
-- [ ] **Step 1: Implement PriorityRouter.kt minimal to pass 13 tests**
+- [x] **Step 1: Implement PriorityRouter.kt minimal to pass 13 tests**
 
 Exact code as above, but ensure `pending()` returns unmodifiable copy, `clear()` works, and `onPlaybackFinished` advances correctly for tests `afterAlertFinishes...` and `onPlaybackFinished_advancesFromPendingFifo`.
 
-- [ ] **Step 2: Run GREEN**
+- [x] **Step 2: Run GREEN**
 
 Run: `./gradlew :app:testDebugUnitTest --tests "com.itantra.data.router.PriorityRouterTest"` Expected: PASS
 Run: `./gradlew :app:testDebugUnitTest` Expected: PASS (46 baseline + ≥13 new = ≥59)
@@ -186,23 +186,23 @@ Run: `./gradlew :app:testDebugUnitTest` Expected: PASS (46 baseline + ≥13 new 
 **Files:**
 - None (verification only)
 
-- [ ] **Step 1: Run all unit tests**
+- [x] **Step 1: Run all unit tests**
 
 Run: `./gradlew :app:testDebugUnitTest --rerun-tasks` Expected: ≥59 tests pass (29 FrameCodec + 17 VadFsm + 13 Router)
 
-- [ ] **Step 2: Debug APK arm64-v8a**
+- [x] **Step 2: Debug APK arm64-v8a**
 
 Run: `./gradlew :app:assembleDebug` Expected: `BUILD SUCCESSFUL`, `lib/arm64-v8a/libitantra-native.so` only
 
-- [ ] **Step 3: No INTERNET**
+- [x] **Step 3: No INTERNET**
 
 Run: `aapt dump permissions app/build/outputs/apk/debug/app-debug.apk | grep -i INTERNET` Expected: no output; `scripts/check-no-internet.bat` → PASS
 
-- [ ] **Step 4: No new native code**
+- [x] **Step 4: No new native code**
 
 Check: `git diff --stat` shows no `app/src/main/cpp/` changes for this slice
 
-- [ ] **Step 5: Git commit**
+- [x] **Step 5: Git commit**
 
 ```bash
 git add app/src/main/java/com/itantra/domain/model/PlaybackItem.kt app/src/main/java/com/itantra/data/router/*.kt app/src/test/java/com/itantra/data/router/PriorityRouterTest.kt docs/superpowers/plans/2026-09-04-phase1-router.md
