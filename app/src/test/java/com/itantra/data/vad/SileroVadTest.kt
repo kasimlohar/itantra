@@ -85,4 +85,35 @@ class SileroVadTest {
         assertThat(p).isAtLeast(0.0f)
         assertThat(p).isAtMost(1.0f)
     }
+
+    @Test
+    fun silenceVeryLow() {
+        val vad = SileroVad()
+        vad.load(modelPath())
+        val silence = ShortArray(512) { 0 }
+        val p = vad.predict(silence)
+        assertThat(p).isLessThan(0.05f)
+    }
+
+    @Test
+    fun hcStateMaintained() {
+        val vad = SileroVad()
+        vad.load(modelPath())
+        val speech = ShortArray(512) { (10000 * sin(2 * PI * 440 * it / 16000)).toInt().toShort() }
+        val p1 = vad.predict(speech)
+        val p2 = vad.predict(speech)
+        assertThat(p1).isNotEqualTo(p2)
+        vad.reset()
+        val p3 = vad.predict(speech)
+        assertThat(p1).isEqualTo(p3)
+    }
+
+    @Test
+    fun corruptedModelFails() {
+        val tmp = java.io.File.createTempFile("corrupted", ".onnx")
+        tmp.writeBytes(ByteArray(2313101) { 0x58 })
+        val vad = SileroVad()
+        assertThat(vad.load(tmp.absolutePath)).isFalse()
+        tmp.delete()
+    }
 }

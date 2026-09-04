@@ -7,6 +7,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 #include <filesystem>
+#include <fstream>
 
 using itantra::vad::SileroVad;
 using itantra::VadFsm;
@@ -104,4 +105,41 @@ TEST(SileroVad, Handles480PaddedTo512) {
     float p = vad.predict(pcm480, 480);
     EXPECT_GE(p, 0.0f);
     EXPECT_LE(p, 1.0f);
+}
+
+// 7. Silence very low (<0.05) — heuristic gives 0.05, real gives 0.044
+TEST(SileroVad, SilenceVeryLow) {
+    SileroVad vad;
+    ASSERT_TRUE(vad.load(kModelPath()));
+    int16_t silence[512] = {0};
+    float p = vad.predict(silence, 512);
+    EXPECT_LT(p, 0.05f) << "Real Silero silence should be <0.05, heuristic 0.05 fails";
+}
+
+// 8. H/C state maintained across calls
+TEST(SileroVad, HcStateMaintained) {
+    SileroVad vad;
+    ASSERT_TRUE(vad.load(kModelPath()));
+    int16_t speech[512];
+    for (int i = 0; i < 512; ++i) speech[i] = static_cast<int16_t>(10000 * std::sin(2 * M_PI * 440 * i / 16000));
+    float p1 = vad.predict(speech, 512);
+    float p2 = vad.predict(speech, 512);
+    EXPECT_NE(p1, p2) << "h/c state should make second predict different";
+    vad.reset();
+    float p3 = vad.predict(speech, 512);
+    EXPECT_FLOAT_EQ(p1, p3) << "After reset, first predict should be same as initial";
+}
+
+// 9. Corrupted model fails to load (proves real ONNX parsing, not just file size)
+TEST(SileroVad, CorruptedModelFails) {
+    // Create temp corrupted file same size but random content
+    std::string tmp = std::filesystem::temp_directory_path().string() + "/corrupted_silero.onnx";
+    {
+        std::ofstream out(tmp, std::ios::binary);
+        std::vector<char> junk(2313101, 'X');
+        out.write(junk.data(), junk.size());
+    }
+    SileroVad vad;
+    EXPECT_FALSE(vad.load(tmp)) << "Corrupted ONNX should fail real session creation, heuristic would pass";
+    std::filesystem::remove(tmp);
 }
