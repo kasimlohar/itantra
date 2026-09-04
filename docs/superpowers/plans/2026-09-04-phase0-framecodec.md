@@ -10,6 +10,8 @@
 
 **Spec:** `PRD.md` (4.1.2 project structure, 4.1.3 concurrency (stub), Appendix B framing, FR-06, Phase 0 + Phase 1 FrameCodec slice) and `Offline Multilingual Speech Transceiver Architecture.md` §4 framing/PTT (technical evidence).
 
+**Status (2026-09-04):** ✅ **COMPLETED** — Commit `089f53e` (`feat(phase0): skeleton + FrameCodec TDD per PRD Appendix B`). Verified: 29 unit tests green, `app-debug.apk` arm64-v8a only (9.1 MB), `libitantra-native.so` 636 KB with ASAN/UBSAN, `aapt` confirms no `INTERNET`. See Execution Log at bottom.
+
 ## Global Constraints
 
 - minSdk 24, targetSdk 34, compileSdk 34, NDK r26+ (30.0.16138531 present), CMake 3.22+, `abiFilters "arm64-v8a"` only — PRD 4.1.2
@@ -24,7 +26,7 @@
 
 ---
 
-### Task 1: Repository & Gradle Skeleton
+### Task 1: Repository & Gradle Skeleton — ✅ Done
 
 **Files:**
 - Create: `settings.gradle.kts`
@@ -39,7 +41,7 @@
 - Consumes: Android SDK 34, JDK 17, NDK 30.0.16138531, CMake 4.1.2
 - Produces: Executable `./gradlew` that can resolve `com.android.application` 8.5.2 + Kotlin 1.9.22 from Maven Central
 
-- [ ] **Step 1: Create settings.gradle.kts**
+- [x] **Step 1: Create settings.gradle.kts**
 
 ```kotlin
 pluginManagement {
@@ -57,7 +59,7 @@ rootProject.name = "iTantra"
 include(":app")
 ```
 
-- [ ] **Step 2: Create root build.gradle.kts**
+- [x] **Step 2: Create root build.gradle.kts**
 
 ```kotlin
 plugins {
@@ -68,7 +70,7 @@ plugins {
 }
 ```
 
-- [ ] **Step 3: Create gradle.properties**
+- [x] **Step 3: Create gradle.properties**
 
 ```properties
 org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
@@ -76,15 +78,17 @@ android.useAndroidX=true
 android.nonTransitiveRResources=true
 ```
 
-- [ ] **Step 4: Generate wrapper (Gradle 8.7)**
+- [x] **Step 4: Generate wrapper (Gradle 8.7)**
 
 Run: `gradle wrapper --gradle-version 8.7` (or download distribution manually) and verify `gradle/wrapper/gradle-wrapper.properties` contains `distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip`
+→ *Executed:* Downloaded `gradle-wrapper.jar` (43,453 B) from `https://github.com/gradle/gradle/raw/v8.7.0/gradle/wrapper/gradle-wrapper.jar`; `gradle-wrapper.properties` points to `gradle-8.7-bin.zip`.
 
-- [ ] **Step 5: Verify wrapper**
+- [x] **Step 5: Verify wrapper**
 
 Run: `./gradlew --version` (or `gradlew.bat --version` on Windows) Expected: Gradle 8.7, JVM 17
+→ *Verified via `testDebugUnitTest` bootstrap:* Gradle 8.7 downloaded dependencies and executed tasks successfully.
 
-### Task 2: App Module, Manifest, Hilt, Compose BOM, Build Config
+### Task 2: App Module, Manifest, Hilt, Compose BOM, Build Config — ✅ Done
 
 **Files:**
 - Create: `app/build.gradle.kts`
@@ -97,7 +101,7 @@ Run: `./gradlew --version` (or `gradlew.bat --version` on Windows) Expected: Gra
 - Consumes: root gradle plugins
 - Produces: `app` module that compiles with `compileSdk 34`, `minSdk 24`, `targetSdk 34`, `abiFilters arm64-v8a`, Compose BOM, Hilt, and exact permissions (no INTERNET)
 
-- [ ] **Step 1: Create app/build.gradle.kts**
+- [x] **Step 1: Create app/build.gradle.kts**
 
 ```kotlin
 plugins {
@@ -141,7 +145,7 @@ dependencies {
 }
 ```
 
-- [ ] **Step 2: Create AndroidManifest.xml with exact PRD 4.2 permissions (no INTERNET)**
+- [x] **Step 2: Create AndroidManifest.xml with exact PRD 4.2 permissions (no INTERNET)**
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -163,7 +167,7 @@ dependencies {
 </manifest>
 ```
 
-- [ ] **Step 3: Create ITantraApp.kt**
+- [x] **Step 3: Create ITantraApp.kt**
 
 ```kotlin
 package com.itantra
@@ -171,7 +175,7 @@ import android.app.Application; import dagger.hilt.android.HiltAndroidApp
 @HiltAndroidApp class ITantraApp : Application()
 ```
 
-- [ ] **Step 4: Create minimal MainActivity.kt**
+- [x] **Step 4: Create minimal MainActivity.kt**
 
 ```kotlin
 package com.itantra
@@ -182,9 +186,10 @@ import dagger.hilt.android.AndroidEntryPoint
 }
 ```
 
-- [ ] **Step 5: Run `gradlew :app:assembleDebug --dry-run` to verify DSL parses (no full build yet)**
+- [x] **Step 5: Run `gradlew :app:assembleDebug --dry-run` to verify DSL parses (no full build yet)**
+→ *Verified via full `assembleDebug` in Task 7 (BUILD SUCCESSFUL).*
 
-### Task 3: NDK/CMake Stub + Sanitizers + No-INTERNET CI Check
+### Task 3: NDK/CMake Stub + Sanitizers + No-INTERNET CI Check — ✅ Done
 
 **Files:**
 - Create: `app/src/main/cpp/CMakeLists.txt`
@@ -196,7 +201,7 @@ import dagger.hilt.android.AndroidEntryPoint
 - Consumes: NDK 30.0.16138531, CMake 4.1.2, app module externalNativeBuild
 - Produces: `libitantra-native.so` for arm64-v8a with `-Wall -Wextra -Wpedantic -Werror -fvisibility=hidden` + ASAN/UBSAN in debug; CI step `aapt dump permissions app/build/outputs/apk/debug/app-debug.apk | ! grep INTERNET`
 
-- [ ] **Step 1: Write CMakeLists.txt**
+- [x] **Step 1: Write CMakeLists.txt**
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
@@ -214,7 +219,7 @@ find_library(log-lib log)
 target_link_libraries(itantra-native PRIVATE ${log-lib})
 ```
 
-- [ ] **Step 2: Write native-lib.cpp**
+- [x] **Step 2: Write native-lib.cpp**
 
 ```cpp
 #include <jni.h>
@@ -223,18 +228,19 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_itantra_NativeLib_hello(JNIEnv* en
 }
 ```
 
-- [ ] **Step 3: Create scripts/check-no-internet.bat**
+- [x] **Step 3: Create scripts/check-no-internet.bat**
 
 ```bat
 @echo off
 aapt dump permissions app\build\outputs\apk\debug\app-debug.apk | findstr /I INTERNET >nul && (echo FAIL: INTERNET permission found & exit /b 1) || (echo PASS: no INTERNET permission)
 ```
 
-- [ ] **Step 4: Verify CMake configures**
+- [x] **Step 4: Verify CMake configures**
 
 Run: `./gradlew :app:assembleDebug -x test` expected: `libitantra-native.so` under `app/build/intermediates/cmake/debug/obj/arm64-v8a/`
+→ *Verified:* `app/build/intermediates/cxx/Debug/1oo174ud/obj/arm64-v8a/libitantra-native.so` (636 KB) and `aapt list` shows `lib/arm64-v8a/libitantra-native.so` only; `compile_commands.json` confirms `-Wall -Wextra -Wpedantic -Werror -O2 -fvisibility=hidden -fsanitize=address,undefined -fno-omit-frame-pointer`.
 
-### Task 4: Domain Model (Language, TransmitMode, Frame)
+### Task 4: Domain Model (Language, TransmitMode, Frame) — ✅ Done
 
 **Files:**
 - Create: `app/src/main/java/com/itantra/domain/model/Language.kt`
@@ -245,7 +251,7 @@ Run: `./gradlew :app:assembleDebug -x test` expected: `libitantra-native.so` und
 - Consumes: none
 - Produces: `enum class Language(val code: Byte)` 0x01..0x0A, `enum class TransmitMode(val bit: Int)` HALF_DUPLEX 0 / DUPLEX 1, `data class Frame(val mode, val isAlert, val isStream, val pttPressed, val srcLang, val dstLang, val seqId, val payloadText, val seqRaw Int 0..65535)`
 
-- [ ] **Step 1: Write Language.kt**
+- [x] **Step 1: Write Language.kt**
 
 ```kotlin
 package com.itantra.domain.model
@@ -256,14 +262,14 @@ enum class Language(val code: Byte) {
 }
 ```
 
-- [ ] **Step 2: Write TransmitMode.kt**
+- [x] **Step 2: Write TransmitMode.kt**
 
 ```kotlin
 package com.itantra.domain.model
 enum class TransmitMode(val bit: Int){ HALF_DUPLEX(0), DUPLEX(1); companion object{ fun fromBit(b:Int)=if(b==0) HALF_DUPLEX else DUPLEX } }
 ```
 
-- [ ] **Step 3: Write Frame.kt**
+- [x] **Step 3: Write Frame.kt**
 
 ```kotlin
 package com.itantra.domain.model
@@ -273,7 +279,7 @@ data class Frame(
 ) { init{ require(seqId in 0..65535) } }
 ```
 
-### Task 5: TDD RED — FrameCodec Tests (Failing)
+### Task 5: TDD RED — FrameCodec Tests (Failing) — ✅ Done
 
 **Files:**
 - Create: `app/src/test/java/com/itantra/data/transport/FrameCodecTest.kt`
@@ -299,7 +305,7 @@ Test cases (each a separate `fun` with explicit name):
 13. `flags_reservedBits_zeroed`
 14. `decode_extraTrailingBytes_throws` and `utf8_payload_withMultibyte_roundTrip` (e.g., "नमस्ते")
 
-- [ ] **Step 1: Write FrameCodecTest.kt with 14+ tests importing non-existent `com.itantra.data.transport.FrameCodec`**
+- [x] **Step 1: Write FrameCodecTest.kt with 14+ tests importing non-existent `com.itantra.data.transport.FrameCodec`**
 
 ```kotlin
 @Test fun encode_setsMagicBytes() {
@@ -308,14 +314,15 @@ Test cases (each a separate `fun` with explicit name):
   assertThat(b[0]).isEqualTo(0x49.toByte()); assertThat(b[1]).isEqualTo(0x54.toByte())
 }
 @Test(expected=FrameCodecException::class) fun decode_rejectsBadMagic(){ FrameCodec.decode(byteArrayOf(0x00,0x00,0,0,1,10,0,0,0,1,104.toByte(),0,0)) }
-... // all above
+... // all above — actual file has 29 tests
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `./gradlew :app:testDebugUnitTest --tests "com.itantra.data.transport.FrameCodecTest"` Expected: FAIL — `Unresolved reference: FrameCodec`
+→ *Observed:* `Unresolved reference: FrameCodec` in 4s (pre-implementation), confirmed TDD iron law.
 
-### Task 6: TDD GREEN — Implement Crc16 + FrameCodec Minimal
+### Task 6: TDD GREEN — Implement Crc16 + FrameCodec Minimal — ✅ Done
 
 **Files:**
 - Create: `app/src/main/java/com/itantra/data/transport/Crc16.kt`
@@ -326,7 +333,7 @@ Run: `./gradlew :app:testDebugUnitTest --tests "com.itantra.data.transport.Frame
 - Consumes: FrameCodecTest expectations
 - Produces: Passing implementation
 
-- [ ] **Step 1: Implement Crc16.kt (CCITT-FALSE)**
+- [x] **Step 1: Implement Crc16.kt (CCITT-FALSE)**
 
 ```kotlin
 object Crc16 {
@@ -335,42 +342,50 @@ object Crc16 {
   }
 }
 ```
+→ *Actual:* `app/src/main/java/com/itantra/data/transport/Crc16.kt:1` — `POLY 0x1021`, `INIT 0xFFFF`, loop masked `and 0xFFFF`, passes known vector `123456789→0x29B1`.
 
-- [ ] **Step 2: Implement FrameCodec.kt**
+- [x] **Step 2: Implement FrameCodec.kt**
 
 Encode: validate src/dst not null, payload bytes `text.toByteArray(UTF_8)` length 0..2048 (throw if >2048), header 10 bytes: magic, ver/mode `(mode.bit shl 4) or 0x01`, flags `(alert?0x80:0)|(stream?0x40:0)|(ptt?0x20:0)`, src, dst, seq BE, len BE; compute CRC over header+payload; return header+payload+crc BE. Decode: check min 12 bytes, magic, version low nibble ==0x01, mode bit 0/1, lang codes 0x01..0x0A, len matches remaining minus 2, CRC matches; throw FrameCodecException otherwise.
+→ *Actual:* `app/src/main/java/com/itantra/data/transport/FrameCodec.kt:1` — `HEADER_SIZE 10`, `CRC_SIZE 2`, `MAX_PAYLOAD 2048`, `encode` validates payload, `decode` checks magic/version/mode/lang/len/CRC and throws `FrameCodecException`.
 
-- [ ] **Step 3: Run GREEN**
+- [x] **Step 3: Run GREEN**
 
 Run: `./gradlew :app:testDebugUnitTest` Expected: PASS, `BUILD SUCCESSFUL`, 14+ tests green
+→ *Observed:* `:app:testDebugUnitTest` `BUILD SUCCESSFUL` in 2–15s; `TEST-com.itantra.data.transport.FrameCodecTest.xml` → `tests="29" failures="0" errors="0"` (all green).
 
-### Task 7: Verify — Build, Permissions, Structure
+### Task 7: Verify — Build, Permissions, Structure — ✅ Done
 
 **Files:**
 - None (verification only) but ensure `app/src/main/cpp/audio/`, `vad/`, `asr/`, `tts/` stub dirs exist per PRD 4.1.2 (can be empty with `.gitkeep`)
 
-- [ ] **Step 1: Run all unit tests**
+- [x] **Step 1: Run all unit tests**
 
 Run: `./gradlew :app:testDebugUnitTest` Expected: all pass, no warnings
+→ *Result:* 29 tests pass, 0 failures.
 
-- [ ] **Step 2: Debug APK for arm64-v8a**
+- [x] **Step 2: Debug APK for arm64-v8a**
 
 Run: `./gradlew :app:assembleDebug` Expected: `app/build/outputs/apk/debug/app-debug.apk` exists; `unzip -l` shows `lib/arm64-v8a/libitantra-native.so` and no `lib/armeabi-v7a`
+→ *Result:* `BUILD SUCCESSFUL` in 47s (first build installed `CMake 3.22.1`); `app/build/outputs/apk/debug/app-debug.apk` 9,158,508 B; `aapt list` → `lib/arm64-v8a/libitantra-native.so` only.
 
-- [ ] **Step 3: No INTERNET permission**
+- [x] **Step 3: No INTERNET permission**
 
 Run: `aapt dump permissions app/build/outputs/apk/debug/app-debug.apk` (or `apkanalyzer manifest permissions`) Expected: no `android.permission.INTERNET`
+→ *Result:* `aapt dump permissions` lists 11 PRD permissions + `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, no `INTERNET`; `scripts/check-no-internet.bat` → `PASS: no INTERNET permission`.
 
-- [ ] **Step 4: Structure audit**
+- [x] **Step 4: Structure audit**
 
 Check tree matches PRD 4.1.2: `app/src/main/cpp/CMakeLists.txt`, `app/src/main/java/com/itantra/di/`, `data/local`, `data/models`, `data/transport`, `domain/model`, `domain/usecase`, `presentation/` stubs exist; `src/test` and `src/androidTest` present
+→ *Result:* All paths exist; `.so` 636 KB in `cxx/Debug/.../obj/arm64-v8a/`; `compile_commands.json` confirms `-Wall -Wextra -Wpedantic -Werror -O2 -fvisibility=hidden -fsanitize=address,undefined`.
 
-- [ ] **Step 5: Git commit**
+- [x] **Step 5: Git commit**
 
 ```bash
 git add docs/superpowers/plans/2026-09-04-phase0-framecodec.md app/ gradle/ settings.gradle.kts build.gradle.kts gradle.properties scripts/
 git commit -m "feat(phase0): skeleton + FrameCodec TDD per PRD Appendix B"
 ```
+→ *Executed:* `089f53e feat(phase0): skeleton + FrameCodec TDD per PRD Appendix B` (45 files, +1503 lines).
 
 ## Self-Review
 
@@ -378,3 +393,23 @@ git commit -m "feat(phase0): skeleton + FrameCodec TDD per PRD Appendix B"
 - Placeholders: none — all steps have concrete code.
 - Type consistency: `Frame(mode:TransmitMode,... seqId:Int, payloadText:String)` used consistently in encode/decode signatures.
 
+---
+
+## Execution Log (2026-09-04)
+
+**Commit:** `089f53e` on `main` — 45 files changed, 1503 insertions. Preceded by `be5ddd0 development setup done!`.
+
+**Test evidence:**
+- `gradlew :app:testDebugUnitTest --tests "com.itantra.data.transport.FrameCodecTest"` → 29 tests, 0 failures, 0 errors (`app/build/test-results/testDebugUnitTest/TEST-com.itantra.data.transport.FrameCodecTest.xml:2`).
+- Reported explicitly as RED then GREEN per TDD iron law.
+
+**Build evidence:**
+- `gradlew :app:assembleDebug` → `BUILD SUCCESSFUL` (47s fresh, 2s incremental). APK `app/build/outputs/apk/debug/app-debug.apk` 9,158,508 B, `lib/arm64-v8a/libitantra-native.so` only.
+- Native toolchain: AGP selected `NDK 26.1.10909125` (from SDK) vs PRD spec `30.0.16138531` present on machine; effective compiler is `clang++.exe --target=aarch64-none-linux-android24 ... -std=c++17` with flags `-Wall -Wextra -Wpedantic -Werror -O2 -fvisibility=hidden -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer` (from `app/.cxx/Debug/.../compile_commands.json:1`). CMake `3.22.1` was auto-installed via SDK license check, matching `3.22+` requirement despite environment reporting `4.1.2`.
+- Permissions: `aapt dump permissions` → 11 PRD permissions only; `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` auto-added by AGP (acceptable, not `INTERNET`).
+
+**Deviations & follow-ups:**
+- NDK: Spec says `30.0.16138531` but build used `26.1.10909125` (latest stable selected by AGP). Next phases should pin `ndkVersion "26.1.10909125"` or install 30.x if strict r30 needed. No functional impact for Phase 0.
+- CMake: Environment `4.1.2` vs build `3.22.1` — build correctly enforced `3.22.1` as declared in `app/build.gradle.kts:externalNativeBuild.cmake.version`. Keep pinned.
+- Header size naming: PRD calls it "12-byte header" but implementation follows Appendix B verbatim (10-byte header + 2-byte CRC = 12-byte minimal frame when `payload_len=0`). Tests cover `0` (control) and `1..2048` (text) per FR-06.
+- No additional runtime deps introduced; MMS-TTS absent, licenses remain MIT/Apache-2.0/CC-BY-4.0.
