@@ -8,17 +8,20 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(BUILD_TESTING "Build tests" OFF)
 
-if(ANDROID)
-  include(FetchContent)
-  FetchContent_Declare(oboe URL https://github.com/google/oboe/archive/refs/tags/1.8.1.zip)
-  FetchContent_MakeAvailable(oboe)
-endif()
+# Oboe 1.8.1 — Fetch deferred to next phase where NDK prebuilt is linked.
+# For this slice, AudioCapture uses stub (no Oboe headers) and is testable via onAudioReady direct call.
+# if(ANDROID)
+#   include(FetchContent)
+#   FetchContent_Declare(oboe URL https://github.com/google/oboe/archive/refs/tags/1.8.1.zip)
+#   FetchContent_MakeAvailable(oboe)
+# endif()
 
 add_library(itantra-native SHARED
     native-lib.cpp
     audio/audio_capture.cpp
     vad/vad_fsm.cpp
     vad/silero_vad.cpp
+    vad/vad_pipeline.cpp
     asr/asr_engine.cpp
     tts/tts_engine.cpp
 )
@@ -26,10 +29,6 @@ add_library(itantra-native SHARED
 target_include_directories(itantra-native PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
-
-if(ANDROID)
-  target_link_libraries(itantra-native PRIVATE oboe::oboe)
-endif()
 
 if(BUILD_TESTING)
   include(FetchContent)
@@ -70,10 +69,19 @@ if(BUILD_TESTING)
     target_link_libraries(silero_vad_test PRIVATE oboe::oboe)
     target_link_libraries(ring_buffer_test PRIVATE oboe::oboe)
   endif()
+  add_executable(vad_pipeline_test tests/vad_pipeline_test.cpp vad/vad_pipeline.cpp vad/silero_vad.cpp vad/vad_fsm.cpp)
+  target_link_libraries(vad_pipeline_test PRIVATE GTest::gtest_main)
+  target_include_directories(vad_pipeline_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_options(vad_pipeline_test PRIVATE -Wall -Wextra -Wpedantic -Werror -O2 -fvisibility=hidden)
+  if(SANITIZE)
+    target_compile_options(vad_pipeline_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(vad_pipeline_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
+  endif()
   include(GoogleTest)
   gtest_discover_tests(ring_buffer_test)
   gtest_discover_tests(silero_vad_test)
   gtest_discover_tests(audio_capture_test)
+  gtest_discover_tests(vad_pipeline_test)
 endif()
 
 # PRD 4.1.2 compiler constraints

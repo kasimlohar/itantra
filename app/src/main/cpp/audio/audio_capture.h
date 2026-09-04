@@ -3,10 +3,8 @@
 #include <cstdint>
 #include <cstddef>
 
-#ifdef __ANDROID__
-#include <oboe/Oboe.h>
-#else
-// Host stub for oboe types when not on Android (tests mock callback directly)
+// Host stub for oboe types — real Oboe integration deferred to next phase where NDK prebuilt is linked.
+// For this slice, AudioCapture simulates Oboe callback via onAudioReady direct call, keeping ring → Silero → VadFsm path testable.
 namespace oboe {
 enum class DataCallbackResult { Continue, Stop };
 enum class Result { OK, ErrorTimeout };
@@ -17,7 +15,6 @@ public:
     virtual DataCallbackResult onAudioReady(AudioStream*, void*, int32_t) { return DataCallbackResult::Continue; }
 };
 } // namespace oboe
-#endif
 
 namespace itantra {
 namespace audio {
@@ -45,9 +42,6 @@ public:
 
 private:
     SpscRingBuffer<int16_t> ring_;
-#ifdef __ANDROID__
-    oboe::AudioStream* stream_ = nullptr;
-#endif
     bool capturing_ = false;
 };
 
