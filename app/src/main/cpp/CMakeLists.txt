@@ -12,6 +12,7 @@ add_library(itantra-native SHARED
     native-lib.cpp
     audio/audio_capture.cpp
     vad/vad_fsm.cpp
+    vad/silero_vad.cpp
     asr/asr_engine.cpp
     tts/tts_engine.cpp
 )
@@ -37,8 +38,17 @@ if(BUILD_TESTING)
     target_compile_options(ring_buffer_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
     target_link_options(ring_buffer_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
   endif()
+  add_executable(silero_vad_test tests/silero_vad_test.cpp vad/silero_vad.cpp vad/vad_fsm.cpp)
+  target_link_libraries(silero_vad_test PRIVATE GTest::gtest_main)
+  target_include_directories(silero_vad_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_options(silero_vad_test PRIVATE -Wall -Wextra -Wpedantic -Werror -O2 -fvisibility=hidden)
+  if(SANITIZE)
+    target_compile_options(silero_vad_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(silero_vad_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
+  endif()
   include(GoogleTest)
   gtest_discover_tests(ring_buffer_test)
+  gtest_discover_tests(silero_vad_test)
 endif()
 
 # PRD 4.1.2 compiler constraints
