@@ -19,6 +19,7 @@ option(BUILD_TESTING "Build tests" OFF)
 add_library(itantra-native SHARED
     native-lib.cpp
     audio/audio_capture.cpp
+    audio/audio_vad_bridge.cpp
     vad/vad_fsm.cpp
     vad/silero_vad.cpp
     vad/vad_pipeline.cpp
