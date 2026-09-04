@@ -10,3 +10,5 @@ captures
 .cxx
 *.apk
 *.aab
+app/libs/*.tar.bz2
+app/libs/*.aar
