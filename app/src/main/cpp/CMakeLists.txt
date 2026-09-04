@@ -8,6 +8,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(BUILD_TESTING "Build tests" OFF)
 
+if(ANDROID)
+  include(FetchContent)
+  FetchContent_Declare(oboe URL https://github.com/google/oboe/archive/refs/tags/1.8.1.zip)
+  FetchContent_MakeAvailable(oboe)
+endif()
+
 add_library(itantra-native SHARED
     native-lib.cpp
     audio/audio_capture.cpp
@@ -20,6 +26,10 @@ add_library(itantra-native SHARED
 target_include_directories(itantra-native PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+if(ANDROID)
+  target_link_libraries(itantra-native PRIVATE oboe::oboe)
+endif()
 
 if(BUILD_TESTING)
   include(FetchContent)
@@ -46,9 +56,24 @@ if(BUILD_TESTING)
     target_compile_options(silero_vad_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
     target_link_options(silero_vad_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
   endif()
+  add_executable(audio_capture_test tests/audio_capture_test.cpp audio/audio_capture.cpp)
+  target_link_libraries(audio_capture_test PRIVATE GTest::gtest_main)
+  target_include_directories(audio_capture_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_options(audio_capture_test PRIVATE -Wall -Wextra -Wpedantic -Werror -O2 -fvisibility=hidden)
+  if(SANITIZE)
+    target_compile_options(audio_capture_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(audio_capture_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
+  endif()
+  # Only link oboe for Android host if available; for host unit tests mock the callback directly
+  if(TARGET oboe::oboe)
+    target_link_libraries(audio_capture_test PRIVATE oboe::oboe)
+    target_link_libraries(silero_vad_test PRIVATE oboe::oboe)
+    target_link_libraries(ring_buffer_test PRIVATE oboe::oboe)
+  endif()
   include(GoogleTest)
   gtest_discover_tests(ring_buffer_test)
   gtest_discover_tests(silero_vad_test)
+  gtest_discover_tests(audio_capture_test)
 endif()
 
 # PRD 4.1.2 compiler constraints
