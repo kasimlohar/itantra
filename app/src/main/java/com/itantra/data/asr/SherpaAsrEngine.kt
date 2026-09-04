@@ -9,12 +9,16 @@ import java.io.File
  * Keeps AsrEngine interface stable so MockAsrEngine and real are interchangeable.
  */
 class SherpaAsrEngine(
-    private val modelDir: String = "app/src/main/assets/models/stt/hi"
+    private val modelDir: String = "app/src/main/assets/models/stt/hi",
+    private val forceMock: Boolean = false // for tests to force mock isolation
 ) : AsrEngine {
 
     private var loadedLang: Language? = null
     private var recognizer: Any? = null // OfflineRecognizer when available, else null
     private var useMockFallback: Boolean = false
+
+    fun isRealInference(): Boolean = !useMockFallback && recognizer != null && loadedLang != null
+    fun isMock(): Boolean = useMockFallback
 
     override fun load(language: Language): Result<Unit> {
         // Only Hindi supported for this slice (single language)
@@ -29,6 +33,11 @@ class SherpaAsrEngine(
         val size = modelFile.length()
         if (size < 120L * 1024 * 1024 || size > 188L * 1024 * 1024) {
             // Allow 134MB as valid, but if outside 120-188, still try
+        }
+        if (forceMock) {
+            loadedLang = language
+            useMockFallback = true
+            return Result.success(Unit)
         }
         return try {
             // Try real sherpa-onnx if available (Android)
