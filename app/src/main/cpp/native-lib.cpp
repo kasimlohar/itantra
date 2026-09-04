@@ -1,6 +1,10 @@
 #include <jni.h>
 #include <string>
 #include "audio/audio_vad_bridge.h"
+#include "audio/audio_capture.h"
+#include "vad/silero_vad.h"
+#include "vad/vad_fsm.h"
+#include "vad/vad_pipeline.h"
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_itantra_NativeLib_hello(JNIEnv* env, jclass) {
