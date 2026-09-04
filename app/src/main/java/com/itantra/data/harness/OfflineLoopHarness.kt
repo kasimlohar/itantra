@@ -19,7 +19,8 @@ data class HarnessResult(
     val sttRtf: Double,
     val ttsRtf: Double,
     val audioDurationSec: Double,
-    val cer: Double?
+    val cer: Double? = null,
+    val wer: Double? = null
 )
 
 class OfflineLoopHarness(
@@ -64,6 +65,7 @@ class OfflineLoopHarness(
         if (sttRtf <= 0.0) sttRtf = 0.001
         if (ttsRtf <= 0.0) ttsRtf = 0.001
         val cer = reference?.let { computeCer(it, text) }
+        val wer = reference?.let { computeWer(it, text) }
         return Result.success(
             HarnessResult(
                 transcription = text,
@@ -74,7 +76,8 @@ class OfflineLoopHarness(
                 sttRtf = sttRtf,
                 ttsRtf = ttsRtf,
                 audioDurationSec = audioSec,
-                cer = cer
+                cer = cer,
+                wer = wer
             )
         )
     }
@@ -99,5 +102,27 @@ class OfflineLoopHarness(
         val raw = dp[m][n].toDouble() / m.coerceAtLeast(1).toDouble()
         // Clamp to 0..1 as CER normalized; hyp longer than ref shouldn't exceed 1
         return raw.coerceIn(0.0, 1.0)
+    }
+
+    private fun computeWer(ref: String, hyp: String): Double {
+        if (ref.isBlank() && hyp.isBlank()) return 0.0
+        if (ref.isBlank()) return 1.0
+        val rw = ref.trim().split(Regex("\\s+"))
+        val hw = hyp.trim().split(Regex("\\s+"))
+        val m = rw.size
+        val n = hw.size
+        val dp = Array(m + 1) { IntArray(n + 1) }
+        for (i in 0..m) dp[i][0] = i
+        for (j in 0..n) dp[0][j] = j
+        for (i in 1..m) {
+            for (j in 1..n) {
+                dp[i][j] = minOf(
+                    dp[i - 1][j] + 1,
+                    dp[i][j - 1] + 1,
+                    dp[i - 1][j - 1] + if (rw[i - 1] == hw[j - 1]) 0 else 1
+                )
+            }
+        }
+        return (dp[m][n].toDouble() / m.coerceAtLeast(1).toDouble()).coerceIn(0.0, 1.0)
     }
 }

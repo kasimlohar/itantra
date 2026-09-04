@@ -3,8 +3,8 @@ package com.itantra.data.harness
 data class GateResult(val pass: Boolean, val sttPass: Boolean, val ttsPass: Boolean, val reason: String)
 
 object HarnessGate {
-    const val STT_THR = 0.30
-    const val TTS_THR = 0.20
+    const val STT_THR = 0.28
+    const val TTS_THR = 0.18
     fun check(r: HarnessResult): GateResult {
         val sttPass = r.sttRtf < STT_THR
         val ttsPass = r.ttsRtf < TTS_THR

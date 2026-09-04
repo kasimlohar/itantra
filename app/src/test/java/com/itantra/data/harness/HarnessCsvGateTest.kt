@@ -8,13 +8,13 @@ import java.io.File
 class HarnessCsvGateTest {
   private fun pcmSec(s:Double=1.0):ShortArray { val n=(16000*s).toInt(); return ShortArray(n){ (5000*Math.sin(2*Math.PI*200*it/16000)).toInt().toShort()} }
   @Test fun csv_headerAndRow() {
-    val h="lang,audioSec,sttRtf,ttsRtf,cer,transcription"
+    val h="lang,audioSec,sttRtf,ttsRtf,cer,wer,transcription"
     assertThat(HarnessCsv.header()).isEqualTo(h)
     val asr=MockAsrEngine().apply{load(Language.HINDI)}; val tts=MockTtsEngine().apply{loadVoice(Language.HINDI)}
     val res=OfflineLoopHarness(asr,tts).run(pcmSec(), "नमस्ते").getOrThrow()
     val row=HarnessCsv.row(Language.HINDI, res)
     assertThat(row).contains("hi"); assertThat(row).contains(res.transcription)
-    assertThat(row.split(",").size).isAtLeast(6)
+    assertThat(row.split(",").size).isAtLeast(7)
   }
   @Test fun csv_writeCreatesFile() {
     val tmp=File.createTempFile("harness",".csv"); tmp.deleteOnExit()
