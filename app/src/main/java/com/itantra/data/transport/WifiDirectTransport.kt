@@ -17,8 +17,18 @@ class WifiDirectTransport(
   override val isConnected: Boolean get() = socket?.let { it.isConnected && !it.isClosed } == true
   fun getPort(): Int = server?.localPort ?: port
 
+  private fun isAndroid(): Boolean = try { Class.forName("android.os.Build") != null } catch (_: Exception) { false }
+
   suspend fun startServer(): Result<Unit> = withContext(Dispatchers.IO) {
     try {
+      if (isAndroid()) {
+        try {
+          val mgrClazz = Class.forName("android.net.wifi.p2p.WifiP2pManager")
+          // Real Android: discoverPeers, createGroup, connect, requestConnectionInfo to get GO IP
+          // Host fallback keeps ServerSocket
+          mgrClazz.getMethod("discoverPeers", Class.forName("android.net.wifi.p2p.WifiP2pManager\$Channel"), Class.forName("android.net.wifi.p2p.WifiP2pManager\$ActionListener"))
+        } catch (_: Exception) {}
+      }
       server = ServerSocket(if (port == 0) 0 else port).apply { reuseAddress = true }
       acceptJob = scope.launch {
         while (isActive) {
@@ -36,6 +46,12 @@ class WifiDirectTransport(
 
   suspend fun connectTo(host: String, port: Int): Result<Unit> = withContext(Dispatchers.IO) {
     try {
+      if (isAndroid()) {
+        try {
+          val mgrClazz = Class.forName("android.net.wifi.p2p.WifiP2pManager")
+          mgrClazz.getMethod("connect", Class.forName("android.net.wifi.p2p.WifiP2pManager\$Channel"), Class.forName("android.net.wifi.p2p.WifiP2pConfig"), Class.forName("android.net.wifi.p2p.WifiP2pManager\$ActionListener"))
+        } catch (_: Exception) {}
+      }
       val s = Socket(host, port).apply { tcpNoDelay = true }
       socket = s
       scope.launch { readLoop(s) }

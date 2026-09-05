@@ -1,5 +1,7 @@
 package com.itantra.presentation.transceiver
 import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.itantra.data.transport.TransportManager
@@ -8,33 +10,12 @@ import com.itantra.data.router.PriorityRouter
 import com.itantra.domain.model.TransmitMode
 import com.itantra.domain.model.PttEvent
 
-class TransceiverViewModel(
+@HiltViewModel
+class TransceiverViewModel @Inject constructor(
   private val transportManager: TransportManager,
   private val pttMachine: PttStateMachine,
   private val router: PriorityRouter
 ) : ViewModel() {
-  constructor() : this(
-    TransportManager(
-      WifiDirectTransportStub(),
-      BluetoothTransportStub()
-    ),
-    PttStateMachine(),
-    PriorityRouter()
-  )
-
-  // Lightweight stubs for Activity default construction (host-runnable, no Android deps)
-  private class WifiDirectTransportStub : com.itantra.data.transport.TransportConnection {
-    override suspend fun send(frame: com.itantra.domain.model.Frame) = Result.success(Unit)
-    override val incomingFrames = kotlinx.coroutines.flow.emptyFlow<com.itantra.domain.model.Frame>()
-    override fun disconnect() {}
-    override val isConnected = false
-  }
-  private class BluetoothTransportStub : com.itantra.data.transport.TransportConnection {
-    override suspend fun send(frame: com.itantra.domain.model.Frame) = Result.success(Unit)
-    override val incomingFrames = kotlinx.coroutines.flow.emptyFlow<com.itantra.domain.model.Frame>()
-    override fun disconnect() {}
-    override val isConnected = false
-  }
   private val _state = MutableStateFlow(TransceiverUiState())
   val state: StateFlow<TransceiverUiState> = _state
 
