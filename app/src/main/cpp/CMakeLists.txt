@@ -8,8 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(BUILD_TESTING "Build tests" OFF)
 
-# Oboe 1.8.1 — Fetch deferred to next phase where NDK prebuilt is linked.
-# For this slice, AudioCapture uses stub (no Oboe headers) and is testable via onAudioReady direct call.
+# Oboe 1.8.1 — Fetch deferred to next phase where NDK prebuilt is linked (kept offline for host).
+# Real Oboe headers are guarded via __has_include in audio_capture.h, so Android build without Oboe still succeeds via stub.
 # if(ANDROID)
 #   include(FetchContent)
 #   FetchContent_Declare(oboe URL https://github.com/google/oboe/archive/refs/tags/1.8.1.zip)
@@ -87,6 +87,10 @@ if(BUILD_TESTING)
     target_compile_options(mel_features_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
     target_link_options(mel_features_test PRIVATE -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
   endif()
+  if(TARGET oboe::oboe)
+    target_link_libraries(vad_pipeline_test PRIVATE oboe::oboe)
+    target_link_libraries(mel_features_test PRIVATE oboe::oboe)
+  endif()
   include(GoogleTest)
   gtest_discover_tests(ring_buffer_test)
   gtest_discover_tests(silero_vad_test)
@@ -114,4 +118,7 @@ endif()
 find_library(log-lib log)
 if(log-lib)
   target_link_libraries(itantra-native PRIVATE ${log-lib})
+endif()
+if(TARGET oboe::oboe)
+  target_link_libraries(itantra-native PRIVATE oboe::oboe)
 endif()

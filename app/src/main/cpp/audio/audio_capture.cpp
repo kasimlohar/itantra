@@ -1,26 +1,57 @@
 #include "audio/audio_capture.h"
+#if defined(__ANDROID__) && __has_include(<oboe/Oboe.h>)
+#include <oboe/Oboe.h>
+#endif
 
 namespace itantra {
 namespace audio {
 
 AudioCapture::AudioCapture(size_t ringCapacity)
-    : ring_(ringCapacity), capturing_(false) {}
+    : ring_(ringCapacity), capturing_(false)
+#if defined(__ANDROID__) && __has_include(<oboe/Oboe.h>)
+    , stream_(nullptr)
+#endif
+{}
 
 AudioCapture::~AudioCapture() {
     stop();
 }
 
 bool AudioCapture::start() {
-    // For this slice, capture is simulated via onAudioReady direct call in tests.
-    // Real Oboe stream (16kHz mono LowLatency Exclusive 480) will be enabled in next phase
-    // where NDK oboe prebuilt is linked. Keep lean and not crashing on host.
     if (capturing_) return true;
-    // On Android, would open Oboe stream here; for now just mark capturing true for pipeline tests
+#if defined(__ANDROID__) && __has_include(<oboe/Oboe.h>)
+    oboe::AudioStreamBuilder builder;
+    builder.setDirection(oboe::Direction::Input);
+    builder.setSampleRate(16000);
+    builder.setChannelCount(1);
+    builder.setFormat(oboe::AudioFormat::I16);
+    builder.setSharingMode(oboe::SharingMode::Exclusive);
+    builder.setPerformanceMode(oboe::PerformanceMode::LowLatency);
+    builder.setCallback(this);
+    builder.setFramesPerCallback(480);
+    oboe::AudioStream* stream = nullptr;
+    auto res = builder.openStream(stream);
+    if (res != oboe::Result::OK || !stream) return false;
+    stream_ = stream;
+    res = stream_->requestStart();
+    if (res != oboe::Result::OK) {
+        stream_->close();
+        stream_ = nullptr;
+        return false;
+    }
+#endif
     capturing_ = true;
     return true;
 }
 
 void AudioCapture::stop() {
+#if defined(__ANDROID__) && __has_include(<oboe/Oboe.h>)
+    if (stream_) {
+        stream_->requestStop();
+        stream_->close();
+        stream_ = nullptr;
+    }
+#endif
     capturing_ = false;
 }
 

@@ -72,3 +72,18 @@ TEST(AudioCapture, StopDestroysStream) {
     // For this test, we check that stop() itself doesn't leak and ring stays same
     EXPECT_EQ(cap.ring().size(), sizeBefore);
 }
+
+// 6. Oboe guard exists (RED for real Oboe phase)
+#include <fstream>
+#include <string>
+TEST(AudioCapture, OboeGuardExists) {
+    std::ifstream f("app/src/main/cpp/audio/audio_capture.h");
+    // fallback for different cwd (host build dir is build/)
+    if (!f) f.open("../app/src/main/cpp/audio/audio_capture.h");
+    if (!f) f.open("D:/SIH 2026/itantra/app/src/main/cpp/audio/audio_capture.h");
+    ASSERT_TRUE(f.is_open()) << "cannot open audio_capture.h";
+    std::string s((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    EXPECT_NE(s.find("__ANDROID__"), std::string::npos) << "guard missing";
+    EXPECT_NE(s.find("#include <oboe/Oboe.h>"), std::string::npos) << "real include missing";
+    EXPECT_NE(s.find("__has_include"), std::string::npos) << "has_include guard missing for offline build";
+}
