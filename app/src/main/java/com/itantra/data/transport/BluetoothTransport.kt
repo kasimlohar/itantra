@@ -9,7 +9,7 @@ import java.util.UUID
 class BluetoothTransport(
   private val uuidStr: String = SPP_UUID.toString(),
   private val port: Int = 0,
-  private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+  private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : TransportConnection {
   companion object { val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB") }
   private val _incoming = MutableSharedFlow<Frame>(extraBufferCapacity = 64)
@@ -103,6 +103,7 @@ class BluetoothTransport(
 
   override fun disconnect() {
     try { acceptJob?.cancel() } catch (_: Exception) {}
+    try { scope.cancel() } catch (_: Exception) {}
     try { server?.close() } catch (_: Exception) {}
     try { socket?.close() } catch (_: Exception) {}
     server = null

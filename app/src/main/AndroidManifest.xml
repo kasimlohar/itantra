@@ -29,6 +29,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".service.TransceiverService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|connectedDevice" />
     </application>
 
 </manifest>

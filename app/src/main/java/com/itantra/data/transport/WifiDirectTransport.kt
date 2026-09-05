@@ -7,7 +7,7 @@ import java.net.Socket
 
 class WifiDirectTransport(
   private val port: Int = 4242,
-  private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+  private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : TransportConnection {
   private val _incoming = MutableSharedFlow<Frame>(extraBufferCapacity = 64)
   override val incomingFrames: Flow<Frame> = _incoming
@@ -82,6 +82,7 @@ class WifiDirectTransport(
 
   override fun disconnect() {
     try { acceptJob?.cancel() } catch (_: Exception) {}
+    try { scope.cancel() } catch (_: Exception) {}
     try { server?.close() } catch (_: Exception) {}
     try { socket?.close() } catch (_: Exception) {}
     server = null
