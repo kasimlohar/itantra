@@ -1,21 +1,51 @@
 package com.itantra.service
 
 import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 
 class TransceiverService : Service() {
-  private lateinit var wakeLock: PowerManager.WakeLock
+  private var wakeLock: PowerManager.WakeLock? = null
+  private var multicastLock: WifiManager.MulticastLock? = null
 
   override fun onCreate() {
     super.onCreate()
-    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "iTantra::Walkie")
-    wakeLock.acquire()
+    createNotificationChannel()
+    try {
+      val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+      wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "iTantra::Walkie").apply {
+        acquire(24 * 60 * 60 * 1000L)
+      }
+    } catch (_: Throwable) {}
+    try {
+      val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+      multicastLock = wm?.createMulticastLock("iTantra::Multicast")?.apply {
+        setReferenceCounted(false)
+        acquire()
+      }
+    } catch (_: Throwable) {}
+  }
+
+  private fun createNotificationChannel() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val channel = NotificationChannel(
+        "itantra_channel",
+        "iTantra Walkie-Talkie",
+        NotificationManager.IMPORTANCE_LOW
+      ).apply {
+        description = "iTantra mesh walkie-talkie background service"
+      }
+      val manager = getSystemService(NotificationManager::class.java)
+      manager?.createNotificationChannel(channel)
+    }
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -30,7 +60,12 @@ class TransceiverService : Service() {
   }
 
   override fun onDestroy() {
-    if (::wakeLock.isInitialized && wakeLock.isHeld) wakeLock.release()
+    try {
+      if (wakeLock?.isHeld == true) wakeLock?.release()
+    } catch (_: Throwable) {}
+    try {
+      if (multicastLock?.isHeld == true) multicastLock?.release()
+    } catch (_: Throwable) {}
     super.onDestroy()
   }
 

@@ -169,6 +169,8 @@ fun TransceiverScreen(
       // PTT Button
       PttButton(
         state = state.pttUiState,
+        isFloorLocked = state.isFloorLocked,
+        floorHolderId = state.floorHolderId,
         volumeLevel = state.volumeLevel,
         onPress = { onIntent(TransceiverIntent.FloorRequest) },
         onRelease = { onIntent(TransceiverIntent.FloorRelease) },
@@ -244,24 +246,29 @@ fun TransceiverScreen(
 @Composable
 fun PttButton(
   state: PttUiState,
+  isFloorLocked: Boolean = false,
+  floorHolderId: String? = null,
   volumeLevel: Float,
   onPress: () -> Unit,
   onRelease: () -> Unit,
   modifier: Modifier = Modifier
 ) {
-  val color = when (state) {
-    PttUiState.IDLE -> Color(0xFF37474F)
-    PttUiState.LISTENING -> Color(0xFF2E7D32) // green pulsing
-    PttUiState.SENDING -> Color(0xFF1565C0) // blue
-    PttUiState.SENT -> Color(0xFF558B2F)
-    PttUiState.BUSY -> Color(0xFFC62828)
+  val color = when {
+    isFloorLocked || state == PttUiState.BUSY -> Color(0xFFC62828)
+    state == PttUiState.IDLE -> Color(0xFF37474F)
+    state == PttUiState.LISTENING -> Color(0xFF2E7D32)
+    state == PttUiState.SENDING -> Color(0xFF1565C0)
+    state == PttUiState.SENT -> Color(0xFF558B2F)
+    else -> Color(0xFF37474F)
   }
-  val text = when (state) {
-    PttUiState.IDLE -> "PUSH TO TALK\n(HOLD & SPEAK)"
-    PttUiState.LISTENING -> "● LISTENING...\n(SPEAK NOW)"
-    PttUiState.SENDING -> "⋯ SENDING..."
-    PttUiState.SENT -> "✓ SENT"
-    PttUiState.BUSY -> "✕ BUSY"
+  val text = when {
+    isFloorLocked -> "✕ FLOOR BUSY\n(${floorHolderId?.uppercase() ?: "PEER"} SPEAKING)"
+    state == PttUiState.BUSY -> "✕ BUSY"
+    state == PttUiState.IDLE -> "PUSH TO TALK\n(HOLD & SPEAK)"
+    state == PttUiState.LISTENING -> "● LISTENING...\n(SPEAK NOW)"
+    state == PttUiState.SENDING -> "⋯ SENDING..."
+    state == PttUiState.SENT -> "✓ SENT"
+    else -> "PUSH TO TALK"
   }
   FilledTonalButton(
     onClick = {},
@@ -269,14 +276,16 @@ fun PttButton(
       .fillMaxWidth()
       .height(76.dp)
       .semantics { contentDescription = "Press to talk" }
-      .pointerInput(Unit) {
+      .pointerInput(isFloorLocked) {
         awaitEachGesture {
           val down = awaitFirstDown(requireUnconsumed = false)
           down.consume()
           onPress()
           val up = waitForUpOrCancellation()
           up?.consume()
-          onRelease()
+          if (!isFloorLocked) {
+            onRelease()
+          }
         }
       },
     colors = ButtonDefaults.filledTonalButtonColors(containerColor = color)

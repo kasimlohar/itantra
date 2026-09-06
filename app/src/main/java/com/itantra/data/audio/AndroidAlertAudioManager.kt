@@ -87,6 +87,17 @@ class AndroidAlertAudioManager @Inject constructor(
     } catch (_: Exception) {}
   }
 
+  override fun playBusyTone() {
+    if (isHost()) return
+    try {
+      val tg = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
+      tg.startTone(ToneGenerator.TONE_SUP_BUSY, 250)
+      mainHandler.postDelayed({
+        try { tg.release() } catch (_: Throwable) {}
+      }, 350)
+    } catch (_: Throwable) {}
+  }
+
   override fun release() {
     try {
       toneGen?.stopTone()

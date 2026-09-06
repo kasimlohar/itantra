@@ -12,6 +12,8 @@ import com.itantra.data.router.PriorityRouter
 import com.itantra.domain.model.TransmitMode
 import com.itantra.domain.model.PttEvent
 import com.itantra.domain.model.Frame
+import com.itantra.domain.model.PlaybackItem
+import com.itantra.data.router.RouteDecision
 import com.itantra.data.audio.AlertAudioManager
 
 @HiltViewModel
@@ -29,6 +31,8 @@ class TransceiverViewModel @Inject constructor(
   @Volatile private var capturedSpeech: String = ""
   @Volatile private var isSpeechFrameSent: Boolean = false
   @Volatile private var lastFloorReleaseTime: Long = 0L
+  private var playbackJob: Job? = null
+  private var floorWatchdogJob: Job? = null
 
   private fun toBcp47(lang: com.itantra.domain.model.Language): String = when (lang) {
     com.itantra.domain.model.Language.HINDI -> "hi-IN"
@@ -110,11 +114,27 @@ class TransceiverViewModel @Inject constructor(
         if (_state.value.pttUiState == PttUiState.LISTENING) {
           return
         }
+        if (_state.value.isFloorLocked) {
+          try { alertAudio?.playBusyTone() } catch (_: Throwable) {}
+          _state.value = _state.value.copy(pttUiState = PttUiState.BUSY)
+          return
+        }
         val ev = pttMachine.onLocalPress()
         val nextUi = when (ev) {
-          is PttEvent.SendControlFrame -> PttUiState.LISTENING
-          is PttEvent.ChannelBusy -> PttUiState.BUSY
-          is PttEvent.FloorDenied -> PttUiState.LISTENING
+          is PttEvent.SendControlFrame -> {
+            vmScope.launch {
+              try { transportManager.send(ev.frame) } catch (_: Throwable) {}
+            }
+            PttUiState.LISTENING
+          }
+          is PttEvent.ChannelBusy -> {
+            try { alertAudio?.playBusyTone() } catch (_: Throwable) {}
+            PttUiState.BUSY
+          }
+          is PttEvent.FloorDenied -> {
+            try { alertAudio?.playBusyTone() } catch (_: Throwable) {}
+            PttUiState.LISTENING
+          }
           is PttEvent.Debounced -> _state.value.pttUiState
           else -> PttUiState.LISTENING
         }
@@ -161,7 +181,12 @@ class TransceiverViewModel @Inject constructor(
         if (_state.value.pttUiState != PttUiState.LISTENING) {
           return
         }
-        try { pttMachine.onLocalRelease() } catch (_: Exception) {}
+        val ev = try { pttMachine.onLocalRelease() } catch (_: Exception) { PttEvent.Ignored }
+        if (ev is PttEvent.FloorReleased) {
+          vmScope.launch {
+            try { transportManager.send(ev.frame) } catch (_: Throwable) {}
+          }
+        }
         _state.value = _state.value.copy(pttUiState = PttUiState.SENDING)
         lastFloorReleaseTime = System.currentTimeMillis()
         try {
@@ -197,6 +222,7 @@ class TransceiverViewModel @Inject constructor(
       is TransceiverIntent.ToggleMode -> {
         val newMode = if (_state.value.channelMode == TransmitMode.HALF_DUPLEX) TransmitMode.DUPLEX else TransmitMode.HALF_DUPLEX
         _state.value = _state.value.copy(channelMode = newMode)
+        pttMachine.setMode(newMode)
       }
       is TransceiverIntent.SelectLanguage -> {
         _state.value = _state.value.copy(srcLang = intent.src, dstLang = intent.dst)
@@ -216,7 +242,7 @@ class TransceiverViewModel @Inject constructor(
         val item = MessageItem(alertFrame, true, System.currentTimeMillis(), 4.0)
         _state.value = _state.value.copy(messageHistory = _state.value.messageHistory + item)
         vmScope.launch {
-          transportManager.send(alertFrame)
+          try { transportManager.send(alertFrame) } catch (_: Throwable) {}
         }
       }
       is TransceiverIntent.ConnectPeer -> {
@@ -233,23 +259,92 @@ class TransceiverViewModel @Inject constructor(
         _state.value = _state.value.copy(connectionState = TransportState.DISCONNECTED)
       }
       is TransceiverIntent.OnFrameReceived -> {
-        val item = MessageItem(intent.frame, intent.frame.isAlert, System.currentTimeMillis(), 2.5)
-        if (intent.frame.isAlert) {
-          try {
-            alertAudio?.acquireAlarmFocus()
-            alertAudio?.vibrate(longArrayOf(0, 500, 200, 500))
-          } catch (_: Exception) {}
+        val frame = intent.frame
+
+        // 1. Check if this is a PTT Floor Control Frame (empty payload)
+        if (frame.payloadText.isEmpty()) {
+          val pttEv = pttMachine.onRemoteFrame(frame)
+          when (pttEv) {
+            is PttEvent.RemoteGranted -> {
+              floorWatchdogJob?.cancel()
+              floorWatchdogJob = vmScope.launch {
+                delay(20000L)
+                if (_state.value.isFloorLocked) {
+                  pttMachine.clear()
+                  _state.value = _state.value.copy(
+                    isFloorLocked = false,
+                    floorHolderId = null,
+                    pttUiState = if (_state.value.pttUiState == PttUiState.BUSY) PttUiState.IDLE else _state.value.pttUiState
+                  )
+                }
+              }
+              _state.value = _state.value.copy(
+                isFloorLocked = true,
+                floorHolderId = "Remote Peer",
+                pttUiState = PttUiState.BUSY
+              )
+              try { voiceTransceiver?.stopListening() } catch (_: Throwable) {}
+              try { alertAudio?.playBusyTone() } catch (_: Throwable) {}
+            }
+            is PttEvent.RemoteReleased -> {
+              floorWatchdogJob?.cancel()
+              _state.value = _state.value.copy(
+                isFloorLocked = false,
+                floorHolderId = null,
+                pttUiState = if (_state.value.pttUiState == PttUiState.BUSY) PttUiState.IDLE else _state.value.pttUiState
+              )
+            }
+            else -> {}
+          }
+          return
         }
+
+        // 2. Non-empty payload: Voice / Text / Alert message
+        val item = MessageItem(frame, frame.isAlert, System.currentTimeMillis(), 2.5)
         _state.value = _state.value.copy(
           messageHistory = _state.value.messageHistory + item,
-          currentTranscript = intent.frame.payloadText,
-          isAlertActive = intent.frame.isAlert || _state.value.isAlertActive,
-          alertTranscript = if (intent.frame.isAlert) intent.frame.payloadText else _state.value.alertTranscript
+          currentTranscript = frame.payloadText,
+          isAlertActive = frame.isAlert || _state.value.isAlertActive,
+          alertTranscript = if (frame.isAlert) frame.payloadText else _state.value.alertTranscript
         )
-        try {
-          val langTag = toBcp47(intent.frame.dstLang)
-          voiceTransceiver?.speak(intent.frame.payloadText, langTag)
-        } catch (_: Throwable) {}
+
+        // 3. Pass frame through PriorityRouter for preemption and FIFO ordering
+        val decision = router.route(frame)
+        when (decision) {
+          is RouteDecision.PlayNow -> {
+            playRoutedItem(decision.item, decision.preempted)
+          }
+          is RouteDecision.Enqueue -> {
+            // Enqueued in router's pending queue; will play when current playback finishes
+          }
+          is RouteDecision.Drop -> {}
+        }
+      }
+    }
+  }
+
+  private fun playRoutedItem(item: PlaybackItem, preempted: PlaybackItem?) {
+    playbackJob?.cancel()
+    if (item.isAlert || preempted != null) {
+      try { voiceTransceiver?.stopSpeaking() } catch (_: Throwable) {}
+      try {
+        alertAudio?.acquireAlarmFocus()
+        alertAudio?.vibrate(longArrayOf(0, 500, 200, 500))
+      } catch (_: Throwable) {}
+    }
+    playbackJob = vmScope.launch {
+      try {
+        val langTag = toBcp47(item.frame.dstLang)
+        voiceTransceiver?.speak(item.frame.payloadText, langTag)
+      } catch (_: Throwable) {}
+
+      val estimatedDurationMs = (item.frame.payloadText.length * 65L).coerceIn(1200L, 8000L)
+      delay(estimatedDurationMs)
+
+      router.onPlaybackFinished()
+      val next = router.current()
+      if (next != null) {
+        playRoutedItem(next, null)
       }
     }
   }

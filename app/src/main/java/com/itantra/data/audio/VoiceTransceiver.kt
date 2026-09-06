@@ -9,6 +9,7 @@ interface VoiceTransceiver {
   )
   fun stopListening()
   fun speak(text: String, langCode: String = "hi-IN")
+  fun stopSpeaking() {}
   fun isAvailable(): Boolean
   fun release()
 }

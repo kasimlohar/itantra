@@ -15,5 +15,7 @@ data class TransceiverUiState(
   val currentTranscript: String = "",
   val messageHistory: List<MessageItem> = emptyList(),
   val isAlertActive: Boolean = false,
-  val alertTranscript: String? = null
+  val alertTranscript: String? = null,
+  val isFloorLocked: Boolean = false,
+  val floorHolderId: String? = null
 )

@@ -540,6 +540,14 @@ class AndroidVoiceTransceiver(
         }
     }
 
+    override fun stopSpeaking() {
+        mainHandler.post {
+            try {
+                textToSpeech?.stop()
+            } catch (_: Throwable) {}
+        }
+    }
+
     override fun release() {
         audioPipeline?.stopRecording()
         audioPipeline = null
