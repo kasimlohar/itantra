@@ -23,6 +23,10 @@ object AppModule {
     return if (isHost()) FakeAlertAudioManager() else AndroidAlertAudioManager(ctx)
   }
   @Provides @Singleton
+  fun provideVoiceTransceiver(@ApplicationContext ctx: Context): com.itantra.data.audio.VoiceTransceiver {
+    return if (isHost()) com.itantra.data.audio.FakeVoiceTransceiver() else com.itantra.data.audio.AndroidVoiceTransceiver(ctx)
+  }
+  @Provides @Singleton
   fun provideWifiDirectTransport(): WifiDirectTransport = WifiDirectTransport()
   @Provides @Singleton
   fun provideBluetoothTransport(): BluetoothTransport = BluetoothTransport()

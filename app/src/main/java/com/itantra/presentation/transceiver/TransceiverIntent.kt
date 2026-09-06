@@ -10,4 +10,5 @@ sealed interface TransceiverIntent {
   data class ConnectPeer(val peerId: String) : TransceiverIntent
   data object Disconnect : TransceiverIntent
   data class OnFrameReceived(val frame: Frame) : TransceiverIntent
+  data class SendMessage(val text: String) : TransceiverIntent
 }

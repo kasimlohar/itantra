@@ -19,6 +19,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try {
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
+            }
+        } catch (_: Throwable) {}
         setContent {
             val state by viewModel.state.collectAsState()
             TransceiverScreen(state = state, onIntent = { viewModel.process(it) })
@@ -27,6 +32,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (event != null && event.repeatCount > 0) return true
             val now = System.currentTimeMillis()
             if (now - lastDown < 80) return true
             lastDown = now

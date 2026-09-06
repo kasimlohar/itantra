@@ -12,3 +12,4 @@ captures
 *.aab
 app/libs/*.tar.bz2
 app/libs/*.aar
+.vscode/

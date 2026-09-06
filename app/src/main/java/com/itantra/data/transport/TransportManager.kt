@@ -2,8 +2,8 @@ package com.itantra.data.transport
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 class TransportManager(
-  private val wifi: TransportConnection,
-  private val bt: TransportConnection,
+  val wifi: TransportConnection,
+  val bt: TransportConnection,
   private val router: com.itantra.data.router.PriorityRouter = com.itantra.data.router.PriorityRouter(),
   private val ptt: com.itantra.data.ptt.PttStateMachine = com.itantra.data.ptt.PttStateMachine()
 ) {
@@ -15,6 +15,36 @@ class TransportManager(
     else -> null
   }
   val incomingFrames: kotlinx.coroutines.flow.Flow<com.itantra.domain.model.Frame> = kotlinx.coroutines.flow.merge(wifi.incomingFrames, bt.incomingFrames)
+
+  init {
+    if (wifi is WifiDirectTransport) {
+      wifi.onConnected = { _state.value = TransportState.CONNECTED }
+      wifi.onDisconnected = { _state.value = TransportState.DISCONNECTED }
+    }
+  }
+
+  suspend fun startServer(): Result<Unit> {
+    _state.value = TransportState.DISCOVERING
+    return if (wifi is WifiDirectTransport) {
+      wifi.startServer()
+    } else {
+      Result.success(Unit)
+    }
+  }
+
+  suspend fun connectTo(host: String, port: Int = 4242): Result<Unit> {
+    _state.value = TransportState.CONNECTING
+    if (wifi is WifiDirectTransport) {
+      val res = wifi.connectTo(host, port)
+      if (res.isSuccess) {
+        _state.value = TransportState.CONNECTED
+        return res
+      }
+    }
+    _state.value = TransportState.DISCONNECTED
+    return Result.failure(Exception("connect failed"))
+  }
+
   suspend fun startDiscovery(): Result<Unit> { _state.value = TransportState.DISCOVERING; return Result.success(Unit) }
   suspend fun connect(): Result<Unit> {
     _state.value = TransportState.CONNECTING

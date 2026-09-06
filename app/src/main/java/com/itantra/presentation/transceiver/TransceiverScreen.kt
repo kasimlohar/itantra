@@ -4,13 +4,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -18,6 +24,10 @@ fun TransceiverScreen(
   state: TransceiverUiState,
   onIntent: (TransceiverIntent) -> Unit
 ) {
+  var showConnectDialog by remember { mutableStateOf(false) }
+  var peerIpInput by remember { mutableStateOf("172.25.17.184") }
+  var messageInput by remember { mutableStateOf("") }
+
   Scaffold(
     topBar = {
       TopAppBar(
@@ -29,27 +39,113 @@ fun TransceiverScreen(
             onCheckedChange = { onIntent(TransceiverIntent.ToggleMode) },
             modifier = Modifier.testTag("modeToggle").semantics { contentDescription = "Mode toggle" }
           )
-          // Connection badge
-          Text(
-            text = when (state.connectionState) {
-              com.itantra.data.transport.TransportState.CONNECTED -> "● Connected"
-              com.itantra.data.transport.TransportState.CONNECTING -> "○ Connecting"
-              com.itantra.data.transport.TransportState.DISCOVERING -> "◐ Discovering"
-              else -> "○ Disconnected"
+          // Connection badge button
+          FilledTonalButton(
+            onClick = { showConnectDialog = true },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            colors = ButtonDefaults.filledTonalButtonColors(
+              containerColor = when (state.connectionState) {
+                com.itantra.data.transport.TransportState.CONNECTED -> Color(0xFF2E7D32)
+                com.itantra.data.transport.TransportState.CONNECTING -> Color(0xFFE65100)
+                com.itantra.data.transport.TransportState.DISCOVERING -> Color(0xFF1565C0)
+                else -> Color(0xFF757575)
+              },
+              contentColor = Color.White
+            ),
+            modifier = Modifier.padding(horizontal = 4.dp)
+          ) {
+            Text(
+              text = when (state.connectionState) {
+                com.itantra.data.transport.TransportState.CONNECTED -> "● Connected"
+                com.itantra.data.transport.TransportState.CONNECTING -> "○ Connecting..."
+                com.itantra.data.transport.TransportState.DISCOVERING -> "◐ Listening"
+                else -> "○ Connect"
+              },
+              style = MaterialTheme.typography.labelSmall
+            )
+          }
+          // Language selector button
+          FilledTonalButton(
+            onClick = {
+              val nextLang = if (state.srcLang == com.itantra.domain.model.Language.HINDI) {
+                com.itantra.domain.model.Language.ENGLISH
+              } else {
+                com.itantra.domain.model.Language.HINDI
+              }
+              onIntent(TransceiverIntent.SelectLanguage(nextLang, state.dstLang))
             },
-            modifier = Modifier.padding(horizontal = 8.dp)
-          )
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF455A64), contentColor = Color.White),
+            modifier = Modifier.padding(horizontal = 2.dp)
+          ) {
+            Text(
+              text = if (state.srcLang == com.itantra.domain.model.Language.HINDI) "HI" else "EN",
+              style = MaterialTheme.typography.labelSmall
+            )
+          }
+          // SOS Alert button
+          FilledTonalButton(
+            onClick = { onIntent(TransceiverIntent.SendAlert("SOS")) },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.Red, contentColor = Color.White),
+            modifier = Modifier.padding(horizontal = 2.dp)
+          ) {
+            Text("SOS", style = MaterialTheme.typography.labelSmall)
+          }
         }
       )
-    },
-    floatingActionButton = {
-      ExtendedFloatingActionButton(
-        onClick = { onIntent(TransceiverIntent.SendAlert("SOS")) },
-        containerColor = Color.Red,
-        contentColor = Color.White
-      ) { Text("SOS Alert") }
     }
   ) { padding ->
+    if (showConnectDialog) {
+      AlertDialog(
+        onDismissRequest = { showConnectDialog = false },
+        title = { Text("Connect Peer (Wi-Fi Direct / Hotspot)") },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Link Status: ${state.connectionState}")
+            Text("Peer IP Address:")
+            OutlinedTextField(
+              value = peerIpInput,
+              onValueChange = { peerIpInput = it },
+              label = { Text("IP Address") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              FilledTonalButton(
+                onClick = { peerIpInput = "172.25.17.184" },
+                modifier = Modifier.weight(1f)
+              ) {
+                Text("Wi-Fi (Redmi)", style = MaterialTheme.typography.labelSmall)
+              }
+              FilledTonalButton(
+                onClick = { peerIpInput = "10.201.153.215" },
+                modifier = Modifier.weight(1f)
+              ) {
+                Text("Hotspot (Redmi)", style = MaterialTheme.typography.labelSmall)
+              }
+            }
+          }
+        },
+        confirmButton = {
+          Button(onClick = {
+            onIntent(TransceiverIntent.ConnectPeer(peerIpInput.trim()))
+            showConnectDialog = false
+          }) {
+            Text("Connect")
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = {
+            onIntent(TransceiverIntent.ConnectPeer(""))
+            showConnectDialog = false
+          }) {
+            Text("Start Server")
+          }
+        }
+      )
+    }
+
     Column(
       modifier = Modifier
         .fillMaxSize()
@@ -91,7 +187,42 @@ fun TransceiverScreen(
       }
       // Current transcript
       if (state.currentTranscript.isNotBlank()) {
-        Text(text = state.currentTranscript, style = MaterialTheme.typography.bodyMedium)
+        Card(
+          modifier = Modifier.fillMaxWidth(),
+          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+          Text(
+            text = "Transcript: ${state.currentTranscript}",
+            modifier = Modifier.padding(10.dp),
+            style = MaterialTheme.typography.bodyMedium
+          )
+        }
+      }
+
+      // Outlined text input row for direct messaging
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+      ) {
+        OutlinedTextField(
+          value = messageInput,
+          onValueChange = { messageInput = it },
+          placeholder = { Text("Hold PTT or type message...", style = MaterialTheme.typography.bodySmall) },
+          singleLine = true,
+          modifier = Modifier.weight(1f)
+        )
+        Button(
+          onClick = {
+            val txt = messageInput.trim()
+            if (txt.isNotBlank()) {
+              onIntent(TransceiverIntent.SendMessage(txt))
+              messageInput = ""
+            }
+          }
+        ) {
+          Text("Send")
+        }
       }
     }
   }
@@ -106,28 +237,42 @@ fun PttButton(
   modifier: Modifier = Modifier
 ) {
   val color = when (state) {
-    PttUiState.IDLE -> Color.Gray
-    PttUiState.LISTENING -> Color(0xFF4CAF50) // green pulsing
-    PttUiState.SENDING -> Color(0xFF2196F3) // blue
-    PttUiState.SENT -> Color(0xFF8BC34A)
-    PttUiState.BUSY -> Color.Red
+    PttUiState.IDLE -> Color(0xFF37474F)
+    PttUiState.LISTENING -> Color(0xFF2E7D32) // green pulsing
+    PttUiState.SENDING -> Color(0xFF1565C0) // blue
+    PttUiState.SENT -> Color(0xFF558B2F)
+    PttUiState.BUSY -> Color(0xFFC62828)
   }
   val text = when (state) {
-    PttUiState.IDLE -> "PTT"
-    PttUiState.LISTENING -> "● LISTENING"
-    PttUiState.SENDING -> "⋯ SENDING"
+    PttUiState.IDLE -> "PUSH TO TALK\n(HOLD & SPEAK)"
+    PttUiState.LISTENING -> "● LISTENING...\n(SPEAK NOW)"
+    PttUiState.SENDING -> "⋯ SENDING..."
     PttUiState.SENT -> "✓ SENT"
     PttUiState.BUSY -> "✕ BUSY"
   }
-  // Use FilledTonalButton with combinedClickable for press/release
-  // For host test, simple Button with click will suffice to have hasClickAction
   FilledTonalButton(
-    onClick = { onPress(); onRelease() },
+    onClick = {},
     modifier = modifier
-      .size(96.dp)
-      .semantics { contentDescription = "Press to talk" },
+      .fillMaxWidth()
+      .height(76.dp)
+      .semantics { contentDescription = "Press to talk" }
+      .pointerInput(Unit) {
+        awaitEachGesture {
+          val down = awaitFirstDown(requireUnconsumed = false)
+          down.consume()
+          onPress()
+          val up = waitForUpOrCancellation()
+          up?.consume()
+          onRelease()
+        }
+      },
     colors = ButtonDefaults.filledTonalButtonColors(containerColor = color)
   ) {
-    Text(text)
+    Text(
+      text = text,
+      textAlign = TextAlign.Center,
+      style = MaterialTheme.typography.titleMedium,
+      color = Color.White
+    )
   }
 }
