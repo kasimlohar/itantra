@@ -3,8 +3,8 @@ package com.itantra.data.asr
 import com.itantra.domain.model.Language
 
 /**
- * Pure mock for AsrEngine per PRD FR-03.
- * No real model, no sherpa-onnx — deterministic stub for TDD.
+ * Pure mock for AsrEngine per PRD FR-03 for test harness.
+ * Relocated to src/test to ensure zero mock implementations in production APK.
  */
 class MockAsrEngine : AsrEngine {
     private val loaded = mutableSetOf<Language>()

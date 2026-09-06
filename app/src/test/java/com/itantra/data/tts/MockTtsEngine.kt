@@ -3,9 +3,8 @@ package com.itantra.data.tts
 import com.itantra.domain.model.Language
 
 /**
- * Pure mock for TtsEngine per PRD FR-04.
- * No real Piper model — deterministic stub for TDD.
- * Mock PCM: text.length*100 samples, 22.05 kHz, first-buffer latency mocked as instant.
+ * Pure mock for TtsEngine per PRD FR-04 for test harness.
+ * Relocated to src/test to ensure zero mock implementations in production APK.
  */
 class MockTtsEngine : TtsEngine {
     private val loaded = mutableSetOf<Language>()

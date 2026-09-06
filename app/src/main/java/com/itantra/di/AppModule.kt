@@ -6,11 +6,13 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import com.itantra.data.asr.AsrEngine
 import com.itantra.data.asr.SherpaAsrEngine
+import com.itantra.data.tts.TtsEngine
+import com.itantra.data.tts.SherpaTtsEngine
 import com.itantra.data.audio.AlertAudioManager
 import com.itantra.data.audio.AndroidAlertAudioManager
 import com.itantra.data.audio.AndroidVoiceTransceiver
-import com.itantra.data.audio.FakeVoiceTransceiver
 import com.itantra.data.audio.VoiceTransceiver
 import com.itantra.data.transport.TransportManager
 import com.itantra.data.transport.WifiDirectTransport
@@ -24,7 +26,7 @@ import javax.inject.Singleton
 object AppModule {
   @Provides @Singleton
   fun provideAlertAudioManager(@ApplicationContext ctx: Context): AlertAudioManager {
-    return if (isHost()) FakeAlertAudioManager() else AndroidAlertAudioManager(ctx)
+    return AndroidAlertAudioManager(ctx)
   }
 
   @Provides @Singleton
@@ -33,11 +35,23 @@ object AppModule {
   }
 
   @Provides @Singleton
+  fun provideAsrEngine(engine: SherpaAsrEngine): AsrEngine = engine
+
+  @Provides @Singleton
+  fun provideSherpaTtsEngine(@ApplicationContext ctx: Context): SherpaTtsEngine {
+    return SherpaTtsEngine(context = ctx)
+  }
+
+  @Provides @Singleton
+  fun provideTtsEngine(engine: SherpaTtsEngine): TtsEngine = engine
+
+  @Provides @Singleton
   fun provideVoiceTransceiver(
     @ApplicationContext ctx: Context,
-    sherpaAsr: SherpaAsrEngine
+    sherpaAsr: SherpaAsrEngine,
+    sherpaTts: SherpaTtsEngine
   ): VoiceTransceiver {
-    return if (isHost()) FakeVoiceTransceiver() else AndroidVoiceTransceiver(ctx, sherpaAsr)
+    return AndroidVoiceTransceiver(ctx, sherpaAsr, sherpaTts)
   }
 
   @Provides @Singleton
@@ -55,13 +69,4 @@ object AppModule {
     router: PriorityRouter,
     ptt: PttStateMachine
   ): TransportManager = TransportManager(wifi, bt, router, ptt)
-
-  private fun isHost(): Boolean = try { System.getProperty("java.vm.name") != "Dalvik" } catch (_: Exception) { true }
-}
-
-// Host fallback for AlertAudioManager when not on Dalvik
-class FakeAlertAudioManager : AlertAudioManager {
-  override fun acquireAlarmFocus(): Boolean = true
-  override fun vibrate(pattern: LongArray) {}
-  override fun release() {}
 }

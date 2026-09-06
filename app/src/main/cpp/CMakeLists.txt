@@ -30,6 +30,8 @@ add_library(itantra-native SHARED
 
 target_include_directories(itantra-native PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/onnxruntime
 )
 
 if(BUILD_TESTING)
@@ -118,6 +120,12 @@ endif()
 find_library(log-lib log)
 if(log-lib)
   target_link_libraries(itantra-native PRIVATE ${log-lib})
+endif()
+if(ANDROID)
+  add_library(onnxruntime-prebuilt SHARED IMPORTED)
+  set_target_properties(onnxruntime-prebuilt PROPERTIES IMPORTED_LOCATION
+      "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libonnxruntime.so")
+  target_link_libraries(itantra-native PRIVATE onnxruntime-prebuilt)
 endif()
 if(TARGET oboe::oboe)
   target_link_libraries(itantra-native PRIVATE oboe::oboe)
