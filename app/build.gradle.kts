@@ -67,9 +67,21 @@ android {
     }
 
     packaging {
+        resources {
+            excludes += listOf("/META-INF/{AL2.0,LGPL2.1}")
+        }
         jniLibs {
             useLegacyPackaging = true
+            pickFirsts += listOf(
+                "**/libc++_shared.so",
+                "**/libonnxruntime.so",
+                "**/libsherpa-onnx-jni.so"
+            )
         }
+    }
+
+    androidResources {
+        noCompress += listOf("onnx", "bin", "fst")
     }
 }
 
@@ -88,6 +100,7 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.51.1")
     kapt("com.google.dagger:hilt-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    implementation(files("libs/sherpa-onnx.aar"))
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")
 
     testImplementation("com.microsoft.onnxruntime:onnxruntime:1.17.0")

@@ -1,6 +1,13 @@
 package com.itantra.data.asr
 
+import android.content.Context
+import android.util.Log
 import com.itantra.domain.model.Language
+import com.k2fsa.sherpa.onnx.FeatureConfig
+import com.k2fsa.sherpa.onnx.OfflineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineNemoEncDecCtcModelConfig
+import com.k2fsa.sherpa.onnx.OfflineRecognizer
+import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import java.io.File
 
 /**
@@ -10,34 +17,63 @@ import java.io.File
  */
 class SherpaAsrEngine(
     private val modelDir: String = "app/src/main/assets/models/stt/hi",
-    private val forceMock: Boolean = false // for tests to force mock isolation
+    private val forceMock: Boolean = false, // for tests to force mock isolation
+    private val context: Context? = null
 ) : AsrEngine {
 
     private var loadedLang: Language? = null
-    private var recognizer: Any? = null // OfflineRecognizer when available, else null
+    private var nativeRecognizer: NativeSherpaRecognizer? = null
     private var useMockFallback: Boolean = false
 
-    private fun isHostJvm(): Boolean = try { System.getProperty("java.vm.name") != "Dalvik" } catch (_: Exception) { true }
-    fun isRealInference(): Boolean {
-        if (useMockFallback) return false
-        if (loadedLang == null) return false
-        // On device, check that onnxruntime is available (real inference capability)
-        return try {
-            Class.forName("ai.onnxruntime.OrtEnvironment")
-            // On host, even though onnxruntime desktop is available via testImplementation, we consider host as mock
-            // Only Dalvik (Android) should be considered real
-            !isHostJvm()
-        } catch (_: Exception) { false }
+    private fun isHostJvm(): Boolean = try {
+        System.getProperty("java.vm.name") != "Dalvik"
+    } catch (_: Exception) {
+        true
     }
+
+    fun isRealInference(): Boolean {
+        if (useMockFallback || forceMock) return false
+        if (loadedLang == null) return false
+        return !isHostJvm() && nativeRecognizer != null
+    }
+
     fun isMock(): Boolean = !isRealInference()
 
     private fun resolveModelFiles(): Pair<File, File>? {
+        if (context != null) {
+            val dir = File(context.filesDir, "models/stt/hi")
+            if (!dir.exists()) dir.mkdirs()
+            val modelFile = File(dir, "indic_conformer_hi_int8.onnx")
+            val tokensFile = File(dir, "tokens.txt")
+
+            val assetModelSize = try { context.assets.open("models/stt/hi/indic_conformer_hi_int8.onnx").use { it.available().toLong() } } catch (_: Throwable) { 0L }
+            val assetTokensSize = try { context.assets.open("models/stt/hi/tokens.txt").use { it.available().toLong() } } catch (_: Throwable) { 0L }
+
+            val needsExtract = !modelFile.exists() || modelFile.length() != assetModelSize ||
+                    !tokensFile.exists() || tokensFile.length() != assetTokensSize ||
+                    modelFile.length() < 120L * 1024 * 1024
+            if (needsExtract) {
+                try {
+                    Log.i("iTantra", "Extracting Sherpa-ONNX model to ${dir.absolutePath} (asset sizes: model=$assetModelSize, tokens=$assetTokensSize)...")
+                    copyAssetToFile(context, "models/stt/hi/indic_conformer_hi_int8.onnx", modelFile)
+                    copyAssetToFile(context, "models/stt/hi/tokens.txt", tokensFile)
+                    Log.i("iTantra", "Model extraction complete (${modelFile.length()} bytes)")
+                } catch (e: Exception) {
+                    Log.e("iTantra", "Failed to extract ASR model from assets", e)
+                }
+            }
+            if (modelFile.exists() && tokensFile.exists()) {
+                return modelFile to tokensFile
+            }
+        }
+
         val candidates = listOf(
             modelDir,
             "app/src/main/assets/models/stt/hi",
             "src/main/assets/models/stt/hi",
             "D:/SIH 2026/itantra/app/src/main/assets/models/stt/hi"
         ).distinct()
+
         for (c in candidates) {
             val m = File("$c/indic_conformer_hi_int8.onnx")
             val t = File("$c/tokens.txt")
@@ -46,8 +82,23 @@ class SherpaAsrEngine(
         return null
     }
 
+    private fun copyAssetToFile(context: Context, assetPath: String, dest: File) {
+        val temp = File("${dest.absolutePath}.tmp")
+        context.assets.open(assetPath).use { input ->
+            temp.outputStream().use { output ->
+                val buf = ByteArray(65536)
+                var n: Int
+                while (input.read(buf).also { n = it } > 0) {
+                    output.write(buf, 0, n)
+                }
+                output.flush()
+            }
+        }
+        if (dest.exists()) dest.delete()
+        temp.renameTo(dest)
+    }
+
     override fun load(language: Language): Result<Unit> {
-        // Only Hindi supported for this slice (single language)
         if (language != Language.HINDI) {
             return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI in this slice"))
         }
@@ -56,80 +107,32 @@ class SherpaAsrEngine(
             return Result.failure(IllegalStateException("Model not found at $modelDir"))
         }
         val (modelFile, tokensFile) = resolved
-        val size = modelFile.length()
-        if (size < 120L * 1024 * 1024 || size > 188L * 1024 * 1024) {
-            // Allow 134MB as valid, but if outside 120-188, still try
-        }
-        if (forceMock) {
+
+        if (forceMock || isHostJvm()) {
             loadedLang = language
             useMockFallback = true
             return Result.success(Unit)
         }
+
         return try {
-            // Try real on-device inference via ONNX Runtime (available via onnxruntime-android)
-            // Check for ai.onnxruntime.OrtEnvironment as proxy for real inference capability
-            try {
-                Class.forName("ai.onnxruntime.OrtEnvironment")
-                // Also check that sherpa class would be available if AAR were present, but for this slice
-                // we consider onnxruntime presence as proof of real inference capability on device
-                // (host JVM also has onnxruntime desktop via testImplementation, but we force mock on host via forceMock)
-                if (isHostJvm()) throw ClassNotFoundException("Host should use mock")
-                val clazz = Class.forName("com.k2fsa.sherpa.onnx.OfflineRecognizer")
-                // Attempt to create real recognizer via reflection to avoid hard compile dep on host where native lib may be missing
-                // Use OfflineRecognizerConfig via reflection
-                val configClazz = Class.forName("com.k2fsa.sherpa.onnx.OfflineRecognizerConfig")
-                val modelConfigClazz = Class.forName("com.k2fsa.sherpa.onnx.OfflineModelConfig")
-                val featConfigClazz = Class.forName("com.k2fsa.sherpa.onnx.FeatureConfig")
-                // Build configs via reflection (simplified: use no-arg constructors and set fields)
-                // For host unit tests, this will likely throw UnsatisfiedLinkError due to missing native lib, so we fallback
-                val featConfig = featConfigClazz.getDeclaredConstructor().newInstance()
-                featConfigClazz.getField("sampleRate").set(featConfig, 16000)
-                featConfigClazz.getField("featureDim").set(featConfig, 80)
-                val modelConfig = modelConfigClazz.getDeclaredConstructor().newInstance()
-                // Try to set nemoCtc field if exists
-                try {
-                    val nemoField = modelConfigClazz.getField("nemoCtc")
-                    val nemoObj = nemoField.type.getDeclaredConstructor().newInstance()
-                    nemoObj.javaClass.getField("model").set(nemoObj, modelFile.absolutePath)
-                    nemoField.set(modelConfig, nemoObj)
-                } catch (_: Exception) {
-                    // Fallback: try direct model field
-                    try { modelConfigClazz.getField("model").set(modelConfig, modelFile.absolutePath) } catch (_: Exception) {}
-                }
-                modelConfigClazz.getField("tokens").set(modelConfig, tokensFile.absolutePath)
-                modelConfigClazz.getField("numThreads").set(modelConfig, 2)
-                modelConfigClazz.getField("provider").set(modelConfig, "cpu")
-                modelConfigClazz.getField("debug").set(modelConfig, 0)
-                val config = configClazz.getDeclaredConstructor().newInstance()
-                configClazz.getField("featConfig").set(config, featConfig)
-                configClazz.getField("modelConfig").set(config, modelConfig)
-                val ctor = clazz.getDeclaredConstructor(configClazz)
-                val rec = ctor.newInstance(config)
-                recognizer = rec
-                loadedLang = language
-                useMockFallback = false
-                return Result.success(Unit)
-            } catch (e: ClassNotFoundException) {
-                // Host without sherpa-onnx AAR — fallback to mock
-            } catch (e: UnsatisfiedLinkError) {
-                // Native lib not available on host — fallback
-            } catch (e: Exception) {
-                // Any other reflection failure — fallback
-            }
-            // Fallback mock success for host unit tests
+            nativeRecognizer = NativeSherpaRecognizer(modelFile, tokensFile)
+            loadedLang = language
+            useMockFallback = false
+            Log.i("iTantra", "Native Sherpa-ONNX Hindi ASR loaded successfully from ${modelFile.absolutePath}")
+            Result.success(Unit)
+        } catch (e: Throwable) {
+            Log.w("iTantra", "Failed to instantiate NativeSherpaRecognizer, falling back to mock", e)
             loadedLang = language
             useMockFallback = true
             Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
 
     override fun unload() {
         try {
-            (recognizer as? AutoCloseable)?.close()
+            nativeRecognizer?.release()
         } catch (_: Exception) {}
-        recognizer = null
+        nativeRecognizer = null
         loadedLang = null
         useMockFallback = false
     }
@@ -145,31 +148,74 @@ class SherpaAsrEngine(
         if (pcm.isEmpty()) {
             return Result.failure(IllegalArgumentException("EmptyAudio"))
         }
+
+        val floatSamples = FloatArray(pcm.size) { pcm[it] / 32768.0f }
+        return transcribeFloat(floatSamples, language)
+    }
+
+    fun transcribeFloat(samples: FloatArray, language: Language = Language.HINDI): Result<String> {
+        if (!isReady() || !isLoaded(language)) {
+            return Result.failure(IllegalStateException("NotReady: $language not loaded"))
+        }
+        if (samples.isEmpty()) {
+            return Result.failure(IllegalArgumentException("EmptyAudio"))
+        }
+
         return try {
-            if (!useMockFallback && recognizer != null) {
-                // Real sherpa-onnx path via reflection
-                val rec = recognizer!!
-                val recClass = rec.javaClass
-                val stream = recClass.getMethod("createStream").invoke(rec)
-                val streamClass = stream.javaClass
-                // Convert PCM ShortArray to float array normalized
-                val floatArray = FloatArray(pcm.size) { pcm[it] / 32768.0f }
-                streamClass.getMethod("acceptWaveform", FloatArray::class.java, Integer.TYPE).invoke(stream, floatArray, 16000)
-                recClass.getMethod("decode", streamClass).invoke(rec, stream)
-                val result = streamClass.getMethod("getResult").invoke(stream)
-                val resultClass = result.javaClass
-                val text = resultClass.getField("text").get(result) as String
-                // Clean up stream if Closeable
-                try { (stream as? AutoCloseable)?.close() } catch (_: Exception) {}
-                // Return real text, fallback to mock if empty (sherpa may return empty for synthetic)
-                if (text.isNotBlank()) return Result.success(text)
-                // If real returns empty for synthetic, still return mock to keep test green, but on real speech it will be non-empty
-                return Result.success("mock:HI:${pcm.size}:real:$text")
+            if (!useMockFallback && nativeRecognizer != null) {
+                val text = nativeRecognizer!!.transcribe(samples)
+                Log.i("iTantra", "Sherpa-ONNX CTC recognized: '$text'")
+                if (text.isNotBlank()) {
+                    return Result.success(text)
+                }
+                return Result.success("")
             }
-            // Mock fallback for host
-            Result.success("mock:HI:${pcm.size}:real")
-        } catch (e: Exception) {
+            Result.success("mock:HI:${samples.size}:real")
+        } catch (e: Throwable) {
+            Log.e("iTantra", "Error during Sherpa-ONNX transcription", e)
             Result.failure(e)
+        }
+    }
+
+    private class NativeSherpaRecognizer(modelFile: File, tokensFile: File) {
+        private val recognizer: OfflineRecognizer
+
+        init {
+            val featConfig = FeatureConfig().apply {
+                sampleRate = 16000
+                featureDim = 80
+            }
+            val nemoConfig = OfflineNemoEncDecCtcModelConfig(model = modelFile.absolutePath)
+            val modelConfig = OfflineModelConfig().apply {
+                nemo = nemoConfig
+                tokens = tokensFile.absolutePath
+                numThreads = 2
+                provider = "cpu"
+                modelType = "nemo_ctc"
+                debug = false
+            }
+            val config = OfflineRecognizerConfig().apply {
+                this.featConfig = featConfig
+                this.modelConfig = modelConfig
+                this.decodingMethod = "greedy_search"
+            }
+            recognizer = OfflineRecognizer(null, config)
+        }
+
+        fun transcribe(samples: FloatArray): String {
+            val stream = recognizer.createStream()
+            try {
+                stream.acceptWaveform(samples, 16000)
+                recognizer.decode(stream)
+                val res = recognizer.getResult(stream)
+                return res.text.trim()
+            } finally {
+                stream.release()
+            }
+        }
+
+        fun release() {
+            recognizer.release()
         }
     }
 }

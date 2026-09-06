@@ -27,6 +27,8 @@ class TransceiverViewModel @Inject constructor(
   private val vmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private var seqCounter = 1
   @Volatile private var capturedSpeech: String = ""
+  @Volatile private var isSpeechFrameSent: Boolean = false
+  @Volatile private var lastFloorReleaseTime: Long = 0L
 
   private fun toBcp47(lang: com.itantra.domain.model.Language): String = when (lang) {
     com.itantra.domain.model.Language.HINDI -> "hi-IN"
@@ -38,7 +40,19 @@ class TransceiverViewModel @Inject constructor(
     com.itantra.domain.model.Language.TELUGU -> "te-IN"
     com.itantra.domain.model.Language.ODIA -> "or-IN"
     com.itantra.domain.model.Language.BENGALI -> "bn-IN"
-    com.itantra.domain.model.Language.ENGLISH -> "en-IN"
+    com.itantra.domain.model.Language.ENGLISH -> {
+      val def = try { java.util.Locale.getDefault().toLanguageTag() } catch (_: Throwable) { "en-US" }
+      if (def.startsWith("en", ignoreCase = true)) def else "en-US"
+    }
+  }
+
+  @Synchronized
+  private fun sendSpeechFrame(text: String) {
+    if (isSpeechFrameSent) return
+    val clean = text.trim()
+    if (clean.isBlank()) return
+    isSpeechFrameSent = true
+    sendTextFrame(clean)
   }
 
   private fun sendTextFrame(text: String) {
@@ -106,6 +120,7 @@ class TransceiverViewModel @Inject constructor(
         }
         if (nextUi == PttUiState.LISTENING) {
           capturedSpeech = ""
+          isSpeechFrameSent = false
           _state.value = _state.value.copy(
             pttUiState = PttUiState.LISTENING,
             currentTranscript = "Listening... Speak now"
@@ -125,10 +140,12 @@ class TransceiverViewModel @Inject constructor(
               },
               onResult = { result ->
                 if (result.isNotBlank()) {
+                  val prev = capturedSpeech
                   capturedSpeech = result
                   _state.value = _state.value.copy(currentTranscript = result)
-                  if (_state.value.pttUiState == PttUiState.SENDING) {
-                    sendTextFrame(result.trim())
+                  val recentlyReleased = (System.currentTimeMillis() - lastFloorReleaseTime) < 6000
+                  if (_state.value.pttUiState == PttUiState.SENDING || (prev.isBlank() && recentlyReleased)) {
+                    sendSpeechFrame(result)
                   }
                 }
               }
@@ -146,25 +163,28 @@ class TransceiverViewModel @Inject constructor(
         }
         try { pttMachine.onLocalRelease() } catch (_: Exception) {}
         _state.value = _state.value.copy(pttUiState = PttUiState.SENDING)
+        lastFloorReleaseTime = System.currentTimeMillis()
         try {
           voiceTransceiver?.stopListening()
         } catch (_: Throwable) {}
 
         vmScope.launch {
           var waited = 0
-          while (capturedSpeech.isBlank() && waited < 1500) {
+          while (capturedSpeech.isBlank() && waited < 4000) {
             delay(50)
             waited += 50
           }
 
           val textToSend = capturedSpeech.trim()
           if (textToSend.isNotBlank()) {
-            sendTextFrame(textToSend)
+            sendSpeechFrame(textToSend)
           } else {
-            _state.value = _state.value.copy(
-              pttUiState = PttUiState.IDLE,
-              currentTranscript = "No speech detected (Hold PTT and speak)"
-            )
+            if (_state.value.pttUiState == PttUiState.SENDING) {
+              _state.value = _state.value.copy(
+                pttUiState = PttUiState.IDLE,
+                currentTranscript = "No speech detected (Hold PTT and speak)"
+              )
+            }
           }
         }
       }

@@ -25,7 +25,7 @@ fun TransceiverScreen(
   onIntent: (TransceiverIntent) -> Unit
 ) {
   var showConnectDialog by remember { mutableStateOf(false) }
-  var peerIpInput by remember { mutableStateOf("172.25.17.184") }
+  var peerIpInput by remember { mutableStateOf("192.168.43.1") }
   var messageInput by remember { mutableStateOf("") }
 
   Scaffold(
@@ -113,17 +113,30 @@ fun TransceiverScreen(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
               FilledTonalButton(
-                onClick = { peerIpInput = "172.25.17.184" },
+                onClick = { peerIpInput = "192.168.43.1" },
                 modifier = Modifier.weight(1f)
               ) {
-                Text("Wi-Fi (Redmi)", style = MaterialTheme.typography.labelSmall)
+                Text("Host (192.168.43.1)", style = MaterialTheme.typography.labelSmall)
               }
               FilledTonalButton(
-                onClick = { peerIpInput = "10.201.153.215" },
+                onClick = { peerIpInput = "192.168.43.188" },
                 modifier = Modifier.weight(1f)
               ) {
-                Text("Hotspot (Redmi)", style = MaterialTheme.typography.labelSmall)
+                Text("Pad (192.168.43.188)", style = MaterialTheme.typography.labelSmall)
               }
+            }
+            val context = androidx.compose.ui.platform.LocalContext.current
+            OutlinedButton(
+              onClick = {
+                try {
+                  context.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS").apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                  })
+                } catch (_: Throwable) {}
+              },
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Text("TTS Voice Settings (Download Offline Hindi)", style = MaterialTheme.typography.labelSmall)
             }
           }
         },
