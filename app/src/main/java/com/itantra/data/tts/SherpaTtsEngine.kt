@@ -47,6 +47,7 @@ class SherpaTtsEngine(
         val (langDir, modelFileName) = when (language) {
             Language.HINDI -> "hi" to "hi_IN-pratham-medium.onnx"
             Language.ENGLISH -> "en" to "en_US-amy-low.onnx"
+            Language.MARATHI -> "mr" to "mr_IN-pratham-medium.onnx"
             else -> return null
         }
 
@@ -58,8 +59,13 @@ class SherpaTtsEngine(
             val jsonFile = File(dir, "$modelFileName.json")
             val espeakDir = File(context.filesDir, "models/tts/hi/espeak-ng-data")
 
+            val assetModelPath = when (language) {
+                Language.MARATHI -> "models/tts/hi/hi_IN-pratham-medium.onnx"
+                else -> "models/tts/$langDir/$modelFileName"
+            }
+
             val assetModelSize = try {
-                context.assets.open("models/tts/$langDir/$modelFileName").use { it.available().toLong() }
+                context.assets.open(assetModelPath).use { it.available().toLong() }
             } catch (_: Throwable) { 0L }
 
             val assetTokensSize = try {
@@ -80,7 +86,7 @@ class SherpaTtsEngine(
             if (needsExtractModel || needsExtractTokens || needsExtractEspeak) {
                 try {
                     Log.i("iTantra", "Extracting Piper TTS assets ($language) to ${dir.absolutePath}...")
-                    if (needsExtractModel) copyAssetToFile(context, "models/tts/$langDir/$modelFileName", modelFile)
+                    if (needsExtractModel) copyAssetToFile(context, assetModelPath, modelFile)
                     if (needsExtractTokens) copyAssetToFile(context, "models/tts/$langDir/tokens.txt", tokensFile)
                     try {
                         copyAssetToFile(context, "models/tts/$langDir/$modelFileName.json", jsonFile)
@@ -104,7 +110,11 @@ class SherpaTtsEngine(
         ).distinct()
 
         for (c in candidates) {
-            val m = File("$c/$modelFileName")
+            var m = File("$c/$modelFileName")
+            if (!m.exists() && language == Language.MARATHI) {
+                m = File("app/src/main/assets/models/tts/hi/hi_IN-pratham-medium.onnx")
+                if (!m.exists()) m = File("src/main/assets/models/tts/hi/hi_IN-pratham-medium.onnx")
+            }
             val t = File("$c/tokens.txt")
             val j = File("$c/$modelFileName.json")
             val e = File("$c/espeak-ng-data")
@@ -164,8 +174,8 @@ class SherpaTtsEngine(
     }
 
     override fun loadVoice(language: Language): Result<Unit> {
-        if (language != Language.HINDI && language != Language.ENGLISH) {
-            return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI and ENGLISH supported"))
+        if (language != Language.HINDI && language != Language.ENGLISH && language != Language.MARATHI) {
+            return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI, ENGLISH, and MARATHI supported"))
         }
         if (isLoaded(language) && isReady()) {
             return Result.success(Unit)

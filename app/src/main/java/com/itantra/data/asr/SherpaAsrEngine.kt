@@ -43,6 +43,7 @@ class SherpaAsrEngine(
         val (langDir, modelName, minSize) = when (language) {
             Language.HINDI -> Triple("hi", "indic_conformer_hi_int8.onnx", 120L * 1024 * 1024)
             Language.ENGLISH -> Triple("en", "conformer_en_int8.onnx", 40L * 1024 * 1024)
+            Language.MARATHI -> Triple("hi", "indic_conformer_hi_int8.onnx", 120L * 1024 * 1024)
             else -> return null
         }
 
@@ -77,7 +78,9 @@ class SherpaAsrEngine(
             modelDir,
             "app/src/main/assets/models/stt/$langDir",
             "src/main/assets/models/stt/$langDir",
-            "D:/SIH 2026/itantra/app/src/main/assets/models/stt/$langDir"
+            "D:/SIH 2026/itantra/app/src/main/assets/models/stt/$langDir",
+            "app/src/main/assets/models/stt/hi",
+            "src/main/assets/models/stt/hi"
         ).distinct()
 
         for (c in candidates) {
@@ -105,8 +108,8 @@ class SherpaAsrEngine(
     }
 
     override fun load(language: Language): Result<Unit> {
-        if (language != Language.HINDI && language != Language.ENGLISH) {
-            return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI and ENGLISH supported"))
+        if (language != Language.HINDI && language != Language.ENGLISH && language != Language.MARATHI) {
+            return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI, ENGLISH, and MARATHI supported"))
         }
         if (isLoaded(language) && isReady()) {
             return Result.success(Unit)

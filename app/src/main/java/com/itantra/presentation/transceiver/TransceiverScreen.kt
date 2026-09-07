@@ -70,10 +70,10 @@ fun TransceiverScreen(
           // Language selector button
           FilledTonalButton(
             onClick = {
-              val nextLang = if (state.srcLang == com.itantra.domain.model.Language.HINDI) {
-                com.itantra.domain.model.Language.ENGLISH
-              } else {
-                com.itantra.domain.model.Language.HINDI
+              val nextLang = when (state.srcLang) {
+                com.itantra.domain.model.Language.HINDI -> com.itantra.domain.model.Language.ENGLISH
+                com.itantra.domain.model.Language.ENGLISH -> com.itantra.domain.model.Language.MARATHI
+                else -> com.itantra.domain.model.Language.HINDI
               }
               onIntent(TransceiverIntent.SelectLanguage(nextLang, nextLang))
             },
@@ -82,7 +82,12 @@ fun TransceiverScreen(
             modifier = Modifier.padding(horizontal = 2.dp)
           ) {
             Text(
-              text = if (state.srcLang == com.itantra.domain.model.Language.HINDI) "🌐 HI" else "🌐 EN",
+              text = when (state.srcLang) {
+                com.itantra.domain.model.Language.HINDI -> "🌐 HI"
+                com.itantra.domain.model.Language.ENGLISH -> "🌐 EN"
+                com.itantra.domain.model.Language.MARATHI -> "🌐 MR"
+                else -> "🌐 HI"
+              },
               style = MaterialTheme.typography.labelSmall
             )
           }

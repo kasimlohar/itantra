@@ -19,11 +19,13 @@ class ModelManager(private val baseDir: String = "app/src/main/assets/models") {
     private fun sttDir(language: Language): String = when (language) {
         Language.HINDI -> "$baseDir/stt/hi"
         Language.ENGLISH -> "$baseDir/stt/en"
+        Language.MARATHI -> "$baseDir/stt/hi"
         else -> "$baseDir/stt/${language.name.lowercase()}"
     }
     private fun ttsDir(language: Language): String = when (language) {
         Language.HINDI -> "$baseDir/tts/hi"
         Language.ENGLISH -> "$baseDir/tts/en"
+        Language.MARATHI -> "$baseDir/tts/mr"
         else -> "$baseDir/tts/${language.name.lowercase()}"
     }
     private fun resolve(dir: String): File {
@@ -52,6 +54,18 @@ class ModelManager(private val baseDir: String = "app/src/main/assets/models") {
             val modelOk = (m.exists() && t.exists()) || (altM.exists() && altT.exists())
             if (!modelOk) return Result.failure(IllegalStateException("STT model missing at $dir"))
             val size = if (m.exists()) m.length() else altM.length()
+            if (size < 35L * 1024 * 1024) return Result.failure(IllegalStateException("STT too small $size"))
+        } else if (language == Language.MARATHI) {
+            val dir = resolve(sttDir(language))
+            val m = File(dir, "indic_conformer_hi_int8.onnx")
+            val t = File(dir, "tokens.txt")
+            val altM = File("app/src/main/assets/models/stt/hi/indic_conformer_hi_int8.onnx")
+            val altM2 = File("src/main/assets/models/stt/hi/indic_conformer_hi_int8.onnx")
+            val altT = File("app/src/main/assets/models/stt/hi/tokens.txt")
+            val altT2 = File("src/main/assets/models/stt/hi/tokens.txt")
+            val modelOk = (m.exists() && t.exists()) || (altM.exists() && altT.exists()) || (altM2.exists() && altT2.exists())
+            if (!modelOk) return Result.failure(IllegalStateException("STT model missing at $dir"))
+            val size = if (m.exists()) m.length() else if (altM.exists()) altM.length() else altM2.length()
             if (size < 35L * 1024 * 1024) return Result.failure(IllegalStateException("STT too small $size"))
         }
         stt = language
@@ -84,6 +98,21 @@ class ModelManager(private val baseDir: String = "app/src/main/assets/models") {
             val j = m?.let { File(it.absolutePath + ".json") }
             if (m == null || !m.exists() || j == null || !j.exists()) return Result.failure(IllegalStateException("TTS missing at $dir"))
             if (m.length() < 25L * 1024 * 1024) return Result.failure(IllegalStateException("TTS too small"))
+        } else if (language == Language.MARATHI) {
+            val dir = resolve(ttsDir(language))
+            val j = File(dir, "mr_IN-pratham-medium.onnx.json")
+            val altJ = File("app/src/main/assets/models/tts/mr/mr_IN-pratham-medium.onnx.json")
+            val altJ2 = File("src/main/assets/models/tts/mr/mr_IN-pratham-medium.onnx.json")
+            val jsonOk = j.exists() || altJ.exists() || altJ2.exists()
+            val hiDir = resolve(ttsDir(Language.HINDI))
+            var m = File(hiDir, "hi_IN-pratham-medium.onnx")
+            if (!m.exists()) {
+                val alt = File("app/src/main/assets/models/tts/hi/hi_IN-pratham-medium.onnx")
+                val alt2 = File("src/main/assets/models/tts/hi/hi_IN-pratham-medium.onnx")
+                if (alt.exists()) m = alt else if (alt2.exists()) m = alt2
+            }
+            if (!jsonOk || !m.exists()) return Result.failure(IllegalStateException("TTS missing at $dir"))
+            if (m.length() < 35L * 1024 * 1024) return Result.failure(IllegalStateException("TTS too small"))
         }
         tts = language
         val ms = (System.nanoTime() - t0) / 1_000_000

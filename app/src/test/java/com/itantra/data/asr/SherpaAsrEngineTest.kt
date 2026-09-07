@@ -43,6 +43,19 @@ class SherpaAsrEngineTest {
     }
 
     @Test
+    fun loadMarathi_succeeds_forChosenLanguage() {
+        val engine = SherpaAsrEngine("app/src/main/assets/models/stt/hi")
+        val result = engine.load(Language.MARATHI)
+        assertThat(result.isSuccess).isTrue()
+        assertThat(engine.isLoaded(Language.MARATHI)).isTrue()
+        assertThat(engine.isReady()).isTrue()
+        val pcm = ShortArray(16000) { (1000 * kotlin.math.sin(2 * Math.PI * 200 * it / 16000)).toInt().toShort() }
+        val r = engine.transcribe(pcm, Language.MARATHI)
+        assertThat(r.isSuccess).isTrue()
+        engine.unload()
+    }
+
+    @Test
     fun transcribe_returnsNonEmptyText_onRealSpeech() {
         val engine = SherpaAsrEngine(modelDir())
         engine.load(Language.HINDI)

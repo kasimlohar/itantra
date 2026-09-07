@@ -50,6 +50,19 @@ class SherpaTtsEngineTest {
     }
 
     @Test
+    fun loadMarathi_succeeds_forChosenLanguage() {
+        val e = SherpaTtsEngine("app/src/main/assets/models/tts/mr")
+        val r = e.loadVoice(Language.MARATHI)
+        assertThat(r.isSuccess).isTrue()
+        assertThat(e.isLoaded(Language.MARATHI)).isTrue()
+        assertThat(e.isReady()).isTrue()
+        val s = e.synthesize("नमस्कार जग", Language.MARATHI)
+        assertThat(s.isSuccess).isTrue()
+        assertThat(s.getOrThrow().sampleRate).isEqualTo(22050)
+        e.unload()
+    }
+
+    @Test
     fun synthesize_returnsNonEmpty22050_whenVoiceLoaded() {
         val e = SherpaTtsEngine(modelDir())
         e.loadVoice(Language.HINDI)
