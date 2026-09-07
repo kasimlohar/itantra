@@ -22,11 +22,13 @@ class TransceiverViewModel @Inject constructor(
   private val pttMachine: PttStateMachine,
   private val router: PriorityRouter,
   private val alertAudio: AlertAudioManager? = null,
-  private val voiceTransceiver: com.itantra.data.audio.VoiceTransceiver? = null
+  private val voiceTransceiver: com.itantra.data.audio.VoiceTransceiver? = null,
+  @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context? = null
 ) : ViewModel() {
   private val _state = MutableStateFlow(TransceiverUiState())
   val state: StateFlow<TransceiverUiState> = _state
   private val vmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+  private var peerDiscoveryManager: com.itantra.data.transport.PeerDiscoveryManager? = null
   private var seqCounter = 1
   @Volatile private var capturedSpeech: String = ""
   @Volatile private var isSpeechFrameSent: Boolean = false
@@ -90,15 +92,41 @@ class TransceiverViewModel @Inject constructor(
       vmScope.launch {
         transportManager.startServer()
       }
+      refreshNetworkInfo()
+      startPeerDiscovery()
     }
     vmScope.launch {
       transportManager.state.collect { connState ->
         _state.value = _state.value.copy(connectionState = connState)
+        if (connState == TransportState.DISCONNECTED && isDalvik()) {
+          refreshNetworkInfo()
+        }
       }
     }
     vmScope.launch {
       transportManager.incomingFrames.collect { frame ->
         process(TransceiverIntent.OnFrameReceived(frame))
+      }
+    }
+  }
+
+  fun refreshNetworkInfo() {
+    val local = com.itantra.data.transport.NetworkUtils.getLocalIpv4Address()
+    val gateway = com.itantra.data.transport.NetworkUtils.getWifiGatewayIpv4(context)
+    _state.value = _state.value.copy(localIp = local, gatewayIp = gateway)
+  }
+
+  private fun startPeerDiscovery() {
+    peerDiscoveryManager?.stop()
+    val mgr = com.itantra.data.transport.PeerDiscoveryManager(context)
+    peerDiscoveryManager = mgr
+    mgr.start { peer ->
+      val current = _state.value.discoveredPeers.filter { it.ip != peer.ip }
+      _state.value = _state.value.copy(discoveredPeers = current + peer)
+    }
+    vmScope.launch {
+      mgr.discoveredPeers.collect { peers ->
+        _state.value = _state.value.copy(discoveredPeers = peers)
       }
     }
   }
@@ -171,7 +199,11 @@ class TransceiverViewModel @Inject constructor(
               }
             )
           } catch (e: Throwable) {
-            println("[iTantra] Error starting voice transceiver: ${e.message}")
+            try {
+              android.util.Log.e("iTantra", "Error starting voice transceiver", e)
+            } catch (_: Throwable) {
+              println("[iTantra] Error starting voice transceiver: ${e.message}")
+            }
           }
         } else {
           _state.value = _state.value.copy(pttUiState = nextUi)
@@ -257,6 +289,9 @@ class TransceiverViewModel @Inject constructor(
       is TransceiverIntent.Disconnect -> {
         transportManager.disconnect()
         _state.value = _state.value.copy(connectionState = TransportState.DISCONNECTED)
+      }
+      is TransceiverIntent.RefreshNetwork -> {
+        refreshNetworkInfo()
       }
       is TransceiverIntent.OnFrameReceived -> {
         val frame = intent.frame
@@ -351,6 +386,8 @@ class TransceiverViewModel @Inject constructor(
 
   override fun onCleared() {
     super.onCleared()
+    peerDiscoveryManager?.stop()
+    peerDiscoveryManager = null
     try { voiceTransceiver?.release() } catch (_: Throwable) {}
     vmScope.cancel()
   }

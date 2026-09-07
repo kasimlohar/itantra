@@ -101,7 +101,7 @@ dependencies {
     kapt("com.google.dagger:hilt-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
     implementation(files("libs/sherpa-onnx.aar"))
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")
+    compileOnly("com.microsoft.onnxruntime:onnxruntime:1.17.0")
 
     testImplementation("com.microsoft.onnxruntime:onnxruntime:1.17.0")
 

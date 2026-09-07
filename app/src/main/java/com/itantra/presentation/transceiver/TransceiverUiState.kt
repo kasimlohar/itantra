@@ -1,4 +1,5 @@
 package com.itantra.presentation.transceiver
+import com.itantra.data.transport.DiscoveredPeer
 import com.itantra.data.transport.TransportState
 import com.itantra.domain.model.Language
 import com.itantra.domain.model.TransmitMode
@@ -17,5 +18,8 @@ data class TransceiverUiState(
   val isAlertActive: Boolean = false,
   val alertTranscript: String? = null,
   val isFloorLocked: Boolean = false,
-  val floorHolderId: String? = null
+  val floorHolderId: String? = null,
+  val localIp: String = "127.0.0.1",
+  val gatewayIp: String? = null,
+  val discoveredPeers: List<DiscoveredPeer> = emptyList()
 )

@@ -16,6 +16,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -96,48 +99,130 @@ fun TransceiverScreen(
       )
     }
   ) { padding ->
+    LaunchedEffect(showConnectDialog) {
+      if (showConnectDialog) {
+        onIntent(TransceiverIntent.RefreshNetwork)
+      }
+    }
+
     if (showConnectDialog) {
       AlertDialog(
         onDismissRequest = { showConnectDialog = false },
-        title = { Text("Connect Peer (Wi-Fi Direct / Hotspot)") },
+        title = { Text("Peer Connection & Network Discovery") },
         text = {
           Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Link Status: ${state.connectionState}")
-            Text("Peer IP Address:")
+            // 1. Current Device Network Info
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Text(
+                    text = "📍 Your IP: ${state.localIp}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                  )
+                  TextButton(
+                    onClick = { onIntent(TransceiverIntent.RefreshNetwork) },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                  ) {
+                    Text("🔄 Refresh", style = MaterialTheme.typography.labelSmall)
+                  }
+                }
+                if (state.gatewayIp != null) {
+                  Text(
+                    text = "🌐 Detected Host (Gateway): ${state.gatewayIp}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                  )
+                }
+                Text(
+                  text = "Status: ${state.connectionState}",
+                  style = MaterialTheme.typography.labelSmall,
+                  color = when (state.connectionState) {
+                    com.itantra.data.transport.TransportState.CONNECTED -> Color(0xFF2E7D32)
+                    com.itantra.data.transport.TransportState.CONNECTING -> Color(0xFFE65100)
+                    else -> Color.Gray
+                  }
+                )
+              }
+            }
+
+            // 2. Discovered Nearby Devices (Zero-Config UDP)
+            if (state.discoveredPeers.isNotEmpty()) {
+              Text(
+                text = "Nearby Discovered Peers:",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold
+              )
+              state.discoveredPeers.forEach { peer ->
+                Surface(
+                  shape = RoundedCornerShape(6.dp),
+                  color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    Column {
+                      Text("📱 ${peer.name}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                      Text(peer.ip, style = MaterialTheme.typography.labelSmall)
+                    }
+                    FilledTonalButton(
+                      onClick = {
+                        peerIpInput = peer.ip
+                        onIntent(TransceiverIntent.ConnectPeer(peer.ip))
+                        showConnectDialog = false
+                      },
+                      contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                      Text("Connect", style = MaterialTheme.typography.labelSmall)
+                    }
+                  }
+                }
+              }
+            }
+
+            // 3. Quick Connect Presets
+            Text("Quick Presets:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+              if (state.gatewayIp != null) {
+                FilledTonalButton(
+                  onClick = { peerIpInput = state.gatewayIp },
+                  contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                  modifier = Modifier.weight(1f)
+                ) {
+                  Text("Host (${state.gatewayIp})", style = MaterialTheme.typography.labelSmall)
+                }
+              }
+              FilledTonalButton(
+                onClick = { peerIpInput = "192.168.43.1" },
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                modifier = Modifier.weight(1f)
+              ) {
+                Text("Hotspot (43.1)", style = MaterialTheme.typography.labelSmall)
+              }
+            }
+
+            // 4. Custom Peer IP Address Input
             OutlinedTextField(
               value = peerIpInput,
               onValueChange = { peerIpInput = it },
-              label = { Text("IP Address") },
+              label = { Text("Peer IP Address") },
+              placeholder = { Text("e.g. 192.168.43.1 or 192.168.1.5") },
               singleLine = true,
               modifier = Modifier.fillMaxWidth()
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-              FilledTonalButton(
-                onClick = { peerIpInput = "192.168.43.1" },
-                modifier = Modifier.weight(1f)
-              ) {
-                Text("Host (192.168.43.1)", style = MaterialTheme.typography.labelSmall)
-              }
-              FilledTonalButton(
-                onClick = { peerIpInput = "192.168.43.188" },
-                modifier = Modifier.weight(1f)
-              ) {
-                Text("Pad (192.168.43.188)", style = MaterialTheme.typography.labelSmall)
-              }
-            }
-            val context = androidx.compose.ui.platform.LocalContext.current
-            OutlinedButton(
-              onClick = {
-                try {
-                  context.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS").apply {
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                  })
-                } catch (_: Throwable) {}
-              },
-              modifier = Modifier.fillMaxWidth()
-            ) {
-              Text("TTS Voice Settings (Download Offline Hindi)", style = MaterialTheme.typography.labelSmall)
-            }
           }
         },
         confirmButton = {
