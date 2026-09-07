@@ -70,6 +70,23 @@ class AndroidVoiceTransceiver(
         }
     }
 
+    private fun parseLanguage(langCode: String): Language {
+        val clean = langCode.trim().lowercase()
+        return when {
+            clean.startsWith("en") -> Language.ENGLISH
+            clean.startsWith("hi") -> Language.HINDI
+            clean.startsWith("gu") -> Language.GUJARATI
+            clean.startsWith("mr") -> Language.MARATHI
+            clean.startsWith("kn") -> Language.KANNADA
+            clean.startsWith("ml") -> Language.MALAYALAM
+            clean.startsWith("ta") -> Language.TAMIL
+            clean.startsWith("te") -> Language.TELUGU
+            clean.startsWith("or") -> Language.ODIA
+            clean.startsWith("bn") -> Language.BENGALI
+            else -> Language.HINDI
+        }
+    }
+
     override fun isAvailable(): Boolean {
         if (sherpaAsr?.isReady() == true) return true
         return try {
@@ -86,10 +103,11 @@ class AndroidVoiceTransceiver(
         onResult: (String) -> Unit
     ) {
         isListeningRequested = true
+        val targetLang = parseLanguage(langCode)
 
         // 1. Primary: Native Sherpa-ONNX offline ASR with direct PCM capture and Silero VAD
-        if (sherpaAsr != null && (sherpaAsr.isReady() || sherpaAsr.load(Language.HINDI).isSuccess)) {
-            Log.i("iTantra", "Starting offline capture via PttAudioCapturePipeline + Silero VAD + SherpaAsrEngine")
+        if (sherpaAsr != null && (sherpaAsr.isLoaded(targetLang) || sherpaAsr.load(targetLang).isSuccess)) {
+            Log.i("iTantra", "Starting offline capture via PttAudioCapturePipeline + Silero VAD + SherpaAsrEngine ($targetLang)")
             isListening = true
             audioPipeline?.stopRecording()
             audioPipeline = PttAudioCapturePipeline(
@@ -100,8 +118,8 @@ class AndroidVoiceTransceiver(
                     isListening = false
                     asrScope.launch {
                         try {
-                            Log.i("iTantra", "Transcribing ${waveform.size} samples with SherpaAsrEngine...")
-                            val res = sherpaAsr.transcribeFloat(waveform, Language.HINDI)
+                            Log.i("iTantra", "Transcribing ${waveform.size} samples with SherpaAsrEngine ($targetLang)...")
+                            val res = sherpaAsr.transcribeFloat(waveform, targetLang)
                             val text = res.getOrDefault("").trim()
                             Log.i("iTantra", "SherpaAsrEngine result: '$text'")
                             mainHandler.post {
@@ -120,7 +138,7 @@ class AndroidVoiceTransceiver(
         }
 
         // 2. Fallback: Android SpeechRecognizer with multi-locale cascade
-        Log.w("iTantra", "SherpaAsr not ready, falling back to platform SpeechRecognizer")
+        Log.w("iTantra", "SherpaAsr not ready for $targetLang, falling back to platform SpeechRecognizer")
         val defaultLocaleTag = try {
             Locale.getDefault().toLanguageTag()
         } catch (_: Throwable) {
@@ -330,18 +348,19 @@ class AndroidVoiceTransceiver(
                 requestAudioFocus()
 
                 val tts = sherpaTts
+                val targetLang = parseLanguage(langCode)
                 if (tts != null) {
-                    if (!tts.isReady()) {
-                        tts.loadVoice(Language.HINDI)
+                    if (!tts.isLoaded(targetLang)) {
+                        tts.loadVoice(targetLang)
                     }
-                    Log.i("iTantra", "Synthesizing text with SherpaTtsEngine (Piper VITS): '$text'")
-                    val synthResult = tts.synthesize(text, Language.HINDI)
+                    Log.i("iTantra", "Synthesizing text with SherpaTtsEngine (Piper VITS) for $targetLang: '$text'")
+                    val synthResult = tts.synthesize(text, targetLang)
                     if (synthResult.isSuccess) {
                         val speechBuffer = synthResult.getOrThrow()
                         Log.i("iTantra", "Streaming ${speechBuffer.pcm.size} PCM samples @ ${speechBuffer.sampleRate} Hz to AudioTrack")
                         playPcm(speechBuffer.pcm, speechBuffer.sampleRate)
                     } else {
-                        Log.w("iTantra", "SherpaTts synthesis failed: ${synthResult.exceptionOrNull()}")
+                        Log.w("iTantra", "SherpaTts synthesis failed for $targetLang: ${synthResult.exceptionOrNull()}")
                     }
                 } else {
                     Log.w("iTantra", "SherpaTtsEngine not provided to AndroidVoiceTransceiver")

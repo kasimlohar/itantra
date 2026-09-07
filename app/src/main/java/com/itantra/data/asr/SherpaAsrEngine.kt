@@ -39,27 +39,33 @@ class SherpaAsrEngine(
 
     fun isMock(): Boolean = !isRealInference()
 
-    private fun resolveModelFiles(): Pair<File, File>? {
+    private fun resolveModelFiles(language: Language = loadedLang ?: Language.HINDI): Pair<File, File>? {
+        val (langDir, modelName, minSize) = when (language) {
+            Language.HINDI -> Triple("hi", "indic_conformer_hi_int8.onnx", 120L * 1024 * 1024)
+            Language.ENGLISH -> Triple("en", "conformer_en_int8.onnx", 40L * 1024 * 1024)
+            else -> return null
+        }
+
         if (context != null) {
-            val dir = File(context.filesDir, "models/stt/hi")
+            val dir = File(context.filesDir, "models/stt/$langDir")
             if (!dir.exists()) dir.mkdirs()
-            val modelFile = File(dir, "indic_conformer_hi_int8.onnx")
+            val modelFile = File(dir, modelName)
             val tokensFile = File(dir, "tokens.txt")
 
-            val assetModelSize = try { context.assets.open("models/stt/hi/indic_conformer_hi_int8.onnx").use { it.available().toLong() } } catch (_: Throwable) { 0L }
-            val assetTokensSize = try { context.assets.open("models/stt/hi/tokens.txt").use { it.available().toLong() } } catch (_: Throwable) { 0L }
+            val assetModelSize = try { context.assets.open("models/stt/$langDir/$modelName").use { it.available().toLong() } } catch (_: Throwable) { 0L }
+            val assetTokensSize = try { context.assets.open("models/stt/$langDir/tokens.txt").use { it.available().toLong() } } catch (_: Throwable) { 0L }
 
-            val needsExtract = !modelFile.exists() || modelFile.length() != assetModelSize ||
-                    !tokensFile.exists() || tokensFile.length() != assetTokensSize ||
-                    modelFile.length() < 120L * 1024 * 1024
+            val needsExtract = !modelFile.exists() || (assetModelSize > 0 && modelFile.length() != assetModelSize) ||
+                    !tokensFile.exists() || (assetTokensSize > 0 && tokensFile.length() != assetTokensSize) ||
+                    modelFile.length() < minSize
             if (needsExtract) {
                 try {
-                    Log.i("iTantra", "Extracting Sherpa-ONNX model to ${dir.absolutePath} (asset sizes: model=$assetModelSize, tokens=$assetTokensSize)...")
-                    copyAssetToFile(context, "models/stt/hi/indic_conformer_hi_int8.onnx", modelFile)
-                    copyAssetToFile(context, "models/stt/hi/tokens.txt", tokensFile)
+                    Log.i("iTantra", "Extracting Sherpa-ONNX model ($language) to ${dir.absolutePath}...")
+                    copyAssetToFile(context, "models/stt/$langDir/$modelName", modelFile)
+                    copyAssetToFile(context, "models/stt/$langDir/tokens.txt", tokensFile)
                     Log.i("iTantra", "Model extraction complete (${modelFile.length()} bytes)")
                 } catch (e: Exception) {
-                    Log.e("iTantra", "Failed to extract ASR model from assets", e)
+                    Log.e("iTantra", "Failed to extract ASR model for $language from assets", e)
                 }
             }
             if (modelFile.exists() && tokensFile.exists()) {
@@ -69,13 +75,13 @@ class SherpaAsrEngine(
 
         val candidates = listOf(
             modelDir,
-            "app/src/main/assets/models/stt/hi",
-            "src/main/assets/models/stt/hi",
-            "D:/SIH 2026/itantra/app/src/main/assets/models/stt/hi"
+            "app/src/main/assets/models/stt/$langDir",
+            "src/main/assets/models/stt/$langDir",
+            "D:/SIH 2026/itantra/app/src/main/assets/models/stt/$langDir"
         ).distinct()
 
         for (c in candidates) {
-            val m = File("$c/indic_conformer_hi_int8.onnx")
+            val m = File("$c/$modelName")
             val t = File("$c/tokens.txt")
             if (m.exists() && t.exists()) return m to t
         }
@@ -99,12 +105,18 @@ class SherpaAsrEngine(
     }
 
     override fun load(language: Language): Result<Unit> {
-        if (language != Language.HINDI) {
-            return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI in this slice"))
+        if (language != Language.HINDI && language != Language.ENGLISH) {
+            return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI and ENGLISH supported"))
         }
-        val resolved = resolveModelFiles()
+        if (isLoaded(language) && isReady()) {
+            return Result.success(Unit)
+        }
+        if (loadedLang != null && loadedLang != language) {
+            unload()
+        }
+        val resolved = resolveModelFiles(language)
         if (resolved == null) {
-            return Result.failure(IllegalStateException("Model not found at $modelDir"))
+            return Result.failure(IllegalStateException("Model not found for $language"))
         }
         val (modelFile, tokensFile) = resolved
 
@@ -118,10 +130,10 @@ class SherpaAsrEngine(
             nativeRecognizer = NativeSherpaRecognizer(modelFile, tokensFile)
             loadedLang = language
             useMockFallback = false
-            Log.i("iTantra", "Native Sherpa-ONNX Hindi ASR loaded successfully from ${modelFile.absolutePath}")
+            Log.i("iTantra", "Native Sherpa-ONNX $language ASR loaded successfully from ${modelFile.absolutePath}")
             Result.success(Unit)
         } catch (e: Throwable) {
-            Log.w("iTantra", "Failed to instantiate NativeSherpaRecognizer, falling back to mock", e)
+            Log.w("iTantra", "Failed to instantiate NativeSherpaRecognizer for $language, falling back to mock", e)
             loadedLang = language
             useMockFallback = true
             Result.success(Unit)
@@ -153,9 +165,15 @@ class SherpaAsrEngine(
         return transcribeFloat(floatSamples, language)
     }
 
-    fun transcribeFloat(samples: FloatArray, language: Language = Language.HINDI): Result<String> {
-        if (!isReady() || !isLoaded(language)) {
-            return Result.failure(IllegalStateException("NotReady: $language not loaded"))
+    fun transcribeFloat(samples: FloatArray, language: Language = loadedLang ?: Language.HINDI): Result<String> {
+        if (!isReady()) {
+            return Result.failure(IllegalStateException("NotReady: no language loaded"))
+        }
+        if (!isLoaded(language)) {
+            val loadRes = load(language)
+            if (loadRes.isFailure) {
+                return Result.failure(IllegalStateException("NotReady: failed to load $language"))
+            }
         }
         if (samples.isEmpty()) {
             return Result.failure(IllegalArgumentException("EmptyAudio"))
@@ -164,13 +182,14 @@ class SherpaAsrEngine(
         return try {
             if (!useMockFallback && nativeRecognizer != null) {
                 val text = nativeRecognizer!!.transcribe(samples)
-                Log.i("iTantra", "Sherpa-ONNX CTC recognized: '$text'")
+                Log.i("iTantra", "Sherpa-ONNX CTC recognized ($language): '$text'")
                 if (text.isNotBlank()) {
                     return Result.success(text)
                 }
                 return Result.success("")
             }
-            Result.success("mock:HI:${samples.size}:real")
+            val langTag = if (language == Language.ENGLISH) "EN" else "HI"
+            Result.success("mock:$langTag:${samples.size}:real")
         } catch (e: Throwable) {
             Log.e("iTantra", "Error during Sherpa-ONNX transcription", e)
             Result.failure(e)

@@ -43,20 +43,27 @@ class SherpaTtsEngine(
 
     fun isMock(): Boolean = !isRealInference()
 
-    private fun resolveModelFiles(): Triple<File, File, File>? {
+    private fun resolveModelFiles(language: Language = loadedLang ?: Language.HINDI): Triple<File, File, File>? {
+        val (langDir, modelFileName) = when (language) {
+            Language.HINDI -> "hi" to "hi_IN-pratham-medium.onnx"
+            Language.ENGLISH -> "en" to "en_US-amy-low.onnx"
+            else -> return null
+        }
+
         if (context != null) {
-            val dir = File(context.filesDir, "models/tts/hi")
+            val dir = File(context.filesDir, "models/tts/$langDir")
             if (!dir.exists()) dir.mkdirs()
-            val modelFile = File(dir, "hi_IN-pratham-medium.onnx")
+            val modelFile = File(dir, modelFileName)
             val tokensFile = File(dir, "tokens.txt")
-            val espeakDir = File(dir, "espeak-ng-data")
+            val jsonFile = File(dir, "$modelFileName.json")
+            val espeakDir = File(context.filesDir, "models/tts/hi/espeak-ng-data")
 
             val assetModelSize = try {
-                context.assets.open("models/tts/hi/hi_IN-pratham-medium.onnx").use { it.available().toLong() }
+                context.assets.open("models/tts/$langDir/$modelFileName").use { it.available().toLong() }
             } catch (_: Throwable) { 0L }
 
             val assetTokensSize = try {
-                context.assets.open("models/tts/hi/tokens.txt").use { it.available().toLong() }
+                context.assets.open("models/tts/$langDir/tokens.txt").use { it.available().toLong() }
             } catch (_: Throwable) { 0L }
 
             // Clean up any legacy files with backslashes in their names
@@ -72,33 +79,38 @@ class SherpaTtsEngine(
 
             if (needsExtractModel || needsExtractTokens || needsExtractEspeak) {
                 try {
-                    Log.i("iTantra", "Extracting Piper TTS assets to ${dir.absolutePath}...")
-                    if (needsExtractModel) copyAssetToFile(context, "models/tts/hi/hi_IN-pratham-medium.onnx", modelFile)
-                    if (needsExtractTokens) copyAssetToFile(context, "models/tts/hi/tokens.txt", tokensFile)
-                    if (needsExtractEspeak) extractZipAsset(context, "models/tts/hi/espeak-ng-data.zip", dir)
-                    Log.i("iTantra", "Piper TTS assets extracted successfully")
+                    Log.i("iTantra", "Extracting Piper TTS assets ($language) to ${dir.absolutePath}...")
+                    if (needsExtractModel) copyAssetToFile(context, "models/tts/$langDir/$modelFileName", modelFile)
+                    if (needsExtractTokens) copyAssetToFile(context, "models/tts/$langDir/tokens.txt", tokensFile)
+                    try {
+                        copyAssetToFile(context, "models/tts/$langDir/$modelFileName.json", jsonFile)
+                    } catch (_: Throwable) {}
+                    if (needsExtractEspeak) extractZipAsset(context, "models/tts/hi/espeak-ng-data.zip", File(context.filesDir, "models/tts/hi"))
+                    Log.i("iTantra", "Piper TTS assets ($language) extracted successfully")
                 } catch (e: Exception) {
-                    Log.e("iTantra", "Failed to extract Piper TTS assets", e)
+                    Log.e("iTantra", "Failed to extract Piper TTS assets for $language", e)
                 }
             }
-            if (modelFile.exists() && tokensFile.exists()) {
-                return Triple(modelFile, tokensFile, espeakDir)
+            if (modelFile.exists() && (tokensFile.exists() || jsonFile.exists())) {
+                return Triple(modelFile, if (tokensFile.exists()) tokensFile else jsonFile, espeakDir)
             }
         }
 
         val candidates = listOf(
             modelDir,
-            "app/src/main/assets/models/tts/hi",
-            "src/main/assets/models/tts/hi",
-            "D:/SIH 2026/itantra/app/src/main/assets/models/tts/hi"
+            "app/src/main/assets/models/tts/$langDir",
+            "src/main/assets/models/tts/$langDir",
+            "D:/SIH 2026/itantra/app/src/main/assets/models/tts/$langDir"
         ).distinct()
 
         for (c in candidates) {
-            val m = File("$c/hi_IN-pratham-medium.onnx")
+            val m = File("$c/$modelFileName")
             val t = File("$c/tokens.txt")
+            val j = File("$c/$modelFileName.json")
             val e = File("$c/espeak-ng-data")
-            if (m.exists() && (t.exists() || File("$c/hi_IN-pratham-medium.onnx.json").exists())) {
-                return Triple(m, t, e)
+            val hiE = File("app/src/main/assets/models/tts/hi/espeak-ng-data")
+            if (m.exists() && (t.exists() || j.exists())) {
+                return Triple(m, if (t.exists()) t else j, if (e.exists()) e else hiE)
             }
         }
         return null
@@ -152,11 +164,17 @@ class SherpaTtsEngine(
     }
 
     override fun loadVoice(language: Language): Result<Unit> {
-        if (language != Language.HINDI) {
-            return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI in this slice"))
+        if (language != Language.HINDI && language != Language.ENGLISH) {
+            return Result.failure(IllegalArgumentException("UnsupportedLanguage: $language, only HINDI and ENGLISH supported"))
         }
-        val resolved = resolveModelFiles()
-            ?: return Result.failure(IllegalStateException("Model not found at $modelDir"))
+        if (isLoaded(language) && isReady()) {
+            return Result.success(Unit)
+        }
+        if (loadedLang != null && loadedLang != language) {
+            unload()
+        }
+        val resolved = resolveModelFiles(language)
+            ?: return Result.failure(IllegalStateException("Model not found for $language"))
         val (mFile, tFile, eDir) = resolved
 
         if (forceMock || isHostJvm()) {
@@ -169,10 +187,10 @@ class SherpaTtsEngine(
             nativeTts = NativeSherpaTts(mFile, tFile, eDir)
             loadedLang = language
             useMockFallback = false
-            Log.i("iTantra", "Native Sherpa-ONNX Piper VITS TTS loaded successfully from ${mFile.absolutePath}")
+            Log.i("iTantra", "Native Sherpa-ONNX Piper VITS TTS ($language) loaded successfully from ${mFile.absolutePath}")
             Result.success(Unit)
         } catch (e: Throwable) {
-            Log.w("iTantra", "Failed to instantiate NativeSherpaTts, falling back to mock", e)
+            Log.w("iTantra", "Failed to instantiate NativeSherpaTts for $language, falling back to mock", e)
             loadedLang = language
             useMockFallback = true
             Result.success(Unit)

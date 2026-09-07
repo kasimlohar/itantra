@@ -75,14 +75,14 @@ fun TransceiverScreen(
               } else {
                 com.itantra.domain.model.Language.HINDI
               }
-              onIntent(TransceiverIntent.SelectLanguage(nextLang, state.dstLang))
+              onIntent(TransceiverIntent.SelectLanguage(nextLang, nextLang))
             },
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
             colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF455A64), contentColor = Color.White),
             modifier = Modifier.padding(horizontal = 2.dp)
           ) {
             Text(
-              text = if (state.srcLang == com.itantra.domain.model.Language.HINDI) "HI" else "EN",
+              text = if (state.srcLang == com.itantra.domain.model.Language.HINDI) "🌐 HI" else "🌐 EN",
               style = MaterialTheme.typography.labelSmall
             )
           }

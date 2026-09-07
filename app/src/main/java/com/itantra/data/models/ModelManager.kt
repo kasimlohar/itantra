@@ -18,10 +18,12 @@ class ModelManager(private val baseDir: String = "app/src/main/assets/models") {
 
     private fun sttDir(language: Language): String = when (language) {
         Language.HINDI -> "$baseDir/stt/hi"
+        Language.ENGLISH -> "$baseDir/stt/en"
         else -> "$baseDir/stt/${language.name.lowercase()}"
     }
     private fun ttsDir(language: Language): String = when (language) {
         Language.HINDI -> "$baseDir/tts/hi"
+        Language.ENGLISH -> "$baseDir/tts/en"
         else -> "$baseDir/tts/${language.name.lowercase()}"
     }
     private fun resolve(dir: String): File {
@@ -31,14 +33,22 @@ class ModelManager(private val baseDir: String = "app/src/main/assets/models") {
 
     fun loadStt(language: Language): Result<Unit> {
         val t0 = System.nanoTime()
-        // For Hindi, validate real files exist and size; for other langs, mock LRU (Phase 2 still single hi model)
         if (language == Language.HINDI) {
             val dir = resolve(sttDir(language))
             val m = File(dir, "indic_conformer_hi_int8.onnx")
             val t = File(dir, "tokens.txt")
-            // also try alternative stt dir without baseDir prefix
             val altM = File("app/src/main/assets/models/stt/hi/indic_conformer_hi_int8.onnx")
             val altT = File("app/src/main/assets/models/stt/hi/tokens.txt")
+            val modelOk = (m.exists() && t.exists()) || (altM.exists() && altT.exists())
+            if (!modelOk) return Result.failure(IllegalStateException("STT model missing at $dir"))
+            val size = if (m.exists()) m.length() else altM.length()
+            if (size < 35L * 1024 * 1024) return Result.failure(IllegalStateException("STT too small $size"))
+        } else if (language == Language.ENGLISH) {
+            val dir = resolve(sttDir(language))
+            val m = File(dir, "conformer_en_int8.onnx")
+            val t = File(dir, "tokens.txt")
+            val altM = File("app/src/main/assets/models/stt/en/conformer_en_int8.onnx")
+            val altT = File("app/src/main/assets/models/stt/en/tokens.txt")
             val modelOk = (m.exists() && t.exists()) || (altM.exists() && altT.exists())
             if (!modelOk) return Result.failure(IllegalStateException("STT model missing at $dir"))
             val size = if (m.exists()) m.length() else altM.length()
@@ -56,7 +66,6 @@ class ModelManager(private val baseDir: String = "app/src/main/assets/models") {
             val dir = resolve(ttsDir(language))
             var m = dir.listFiles()?.firstOrNull { it.name.endsWith(".onnx") && !it.name.endsWith(".json") }
             if (m == null) m = File(dir, "hi_IN-pratham-medium.onnx")
-            // fallback to known hi location
             if (m == null || !m.exists()) {
                 val alt = File("app/src/main/assets/models/tts/hi/hi_IN-pratham-medium.onnx")
                 if (alt.exists()) m = alt
@@ -64,6 +73,17 @@ class ModelManager(private val baseDir: String = "app/src/main/assets/models") {
             val j = m?.let { File(it.absolutePath + ".json") }
             if (m == null || !m.exists() || j == null || !j.exists()) return Result.failure(IllegalStateException("TTS missing at $dir"))
             if (m.length() < 35L * 1024 * 1024) return Result.failure(IllegalStateException("TTS too small"))
+        } else if (language == Language.ENGLISH) {
+            val dir = resolve(ttsDir(language))
+            var m = dir.listFiles()?.firstOrNull { it.name.endsWith(".onnx") && !it.name.endsWith(".json") }
+            if (m == null) m = File(dir, "en_US-amy-low.onnx")
+            if (m == null || !m.exists()) {
+                val alt = File("app/src/main/assets/models/tts/en/en_US-amy-low.onnx")
+                if (alt.exists()) m = alt
+            }
+            val j = m?.let { File(it.absolutePath + ".json") }
+            if (m == null || !m.exists() || j == null || !j.exists()) return Result.failure(IllegalStateException("TTS missing at $dir"))
+            if (m.length() < 25L * 1024 * 1024) return Result.failure(IllegalStateException("TTS too small"))
         }
         tts = language
         val ms = (System.nanoTime() - t0) / 1_000_000
