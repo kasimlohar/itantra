@@ -13,3 +13,9 @@ captures
 app/libs/*.tar.bz2
 app/libs/*.aar
 .vscode/
+
+# Build & install logs
+build*.txt
+install*.txt
+*.log
+jni/
