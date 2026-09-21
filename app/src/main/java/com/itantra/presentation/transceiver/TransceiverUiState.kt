@@ -21,5 +21,7 @@ data class TransceiverUiState(
   val floorHolderId: String? = null,
   val localIp: String = "127.0.0.1",
   val gatewayIp: String? = null,
-  val discoveredPeers: List<DiscoveredPeer> = emptyList()
+  val discoveredPeers: List<DiscoveredPeer> = emptyList(),
+  /** True while a user-initiated UDP discovery scan is actively running. */
+  val isDiscoveryActive: Boolean = false
 )

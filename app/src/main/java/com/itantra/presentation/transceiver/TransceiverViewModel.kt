@@ -93,7 +93,11 @@ class TransceiverViewModel @Inject constructor(
         transportManager.startServer()
       }
       refreshNetworkInfo()
-      startPeerDiscovery()
+      // Small delay so the initial Compose composition completes before state changes
+      vmScope.launch {
+        delay(500L)
+        startPeerDiscovery()
+      }
     }
     vmScope.launch {
       transportManager.state.collect { connState ->
@@ -120,6 +124,7 @@ class TransceiverViewModel @Inject constructor(
     peerDiscoveryManager?.stop()
     val mgr = com.itantra.data.transport.PeerDiscoveryManager(context)
     peerDiscoveryManager = mgr
+    _state.value = _state.value.copy(isDiscoveryActive = true)
     mgr.start { peer ->
       val current = _state.value.discoveredPeers.filter { it.ip != peer.ip }
       _state.value = _state.value.copy(discoveredPeers = current + peer)
@@ -128,6 +133,11 @@ class TransceiverViewModel @Inject constructor(
       mgr.discoveredPeers.collect { peers ->
         _state.value = _state.value.copy(discoveredPeers = peers)
       }
+    }
+    // After 15 seconds without a new peer event, mark discovery as passive
+    vmScope.launch {
+      delay(15_000L)
+      _state.value = _state.value.copy(isDiscoveryActive = false)
     }
   }
 
@@ -292,6 +302,10 @@ class TransceiverViewModel @Inject constructor(
       }
       is TransceiverIntent.RefreshNetwork -> {
         refreshNetworkInfo()
+      }
+      is TransceiverIntent.RestartDiscovery -> {
+        refreshNetworkInfo()
+        startPeerDiscovery()
       }
       is TransceiverIntent.OnFrameReceived -> {
         val frame = intent.frame

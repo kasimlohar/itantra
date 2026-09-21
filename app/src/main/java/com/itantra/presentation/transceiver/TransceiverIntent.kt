@@ -12,4 +12,6 @@ sealed interface TransceiverIntent {
   data class OnFrameReceived(val frame: Frame) : TransceiverIntent
   data class SendMessage(val text: String) : TransceiverIntent
   data object RefreshNetwork : TransceiverIntent
+  /** Restart UDP peer discovery scan — used by the Radar Search Peers button. */
+  data object RestartDiscovery : TransceiverIntent
 }
