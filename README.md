@@ -1,15 +1,18 @@
-<![CDATA[<p align="center">
+# iTantra — Offline Multilingual Neural Transceiver
+
+<p align="center">
   <img src="docs/banner.jpg" alt="iTantra — Offline Multilingual Neural Transceiver" width="100%" />
 </p>
 
 <p align="center">
-  <strong>iTantra</strong> — An offline Android neural transceiver that converts speech to ultra-compact text, transmits it over ad-hoc Wi-Fi Direct / Bluetooth, and re-synthesises intelligible voice on the peer device. No internet. No servers. No data plans.
+  <strong>iTantra</strong> is an offline Android neural transceiver that captures speech, converts it into ultra-compact semantic text, transmits it over ad-hoc Wi-Fi Direct or Bluetooth, and re-synthesizes intelligible voice on peer devices. Zero internet required.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Android%2024%2B-3DDC84?style=for-the-badge&logo=android" alt="Android 24+" />
   <img src="https://img.shields.io/badge/Language-Kotlin%20%2B%20C%2B%2B-7F52FF?style=for-the-badge&logo=kotlin" alt="Kotlin + C++" />
   <img src="https://img.shields.io/badge/ML%20Runtime-sherpa--onnx-00B4D8?style=for-the-badge" alt="sherpa-onnx" />
+  <img src="https://img.shields.io/badge/Audio%20I%2FO-Google%20Oboe-blue?style=for-the-badge" alt="Google Oboe" />
   <img src="https://img.shields.io/badge/Status-Active%20Development-F4A261?style=for-the-badge" alt="Active Development" />
   <img src="https://img.shields.io/badge/License-MIT%20%2F%20Apache--2.0-green?style=for-the-badge" alt="License" />
 </p>
@@ -18,23 +21,24 @@
 
 ## 🧭 Table of Contents
 
-- [The Problem](#-the-problem)
-- [The Solution](#-the-solution)
-- [Key Features](#-key-features)
-- [Architecture](#️-architecture)
-- [AI & ML Pipeline](#-ai--ml-pipeline)
-- [Supported Languages](#-supported-languages)
-- [Framing Protocol](#-framing-protocol)
-- [Performance Targets](#-performance-targets)
-- [Tech Stack](#-tech-stack)
-- [Project Structure](#-project-structure)
-- [Getting Started](#-getting-started)
-- [Building the APK](#-building-the-apk)
-- [Running on Device](#-running-on-device)
-- [App Screens](#-app-screens)
-- [Roadmap](#️-roadmap)
-- [SIH Compliance](#-sih-compliance)
-- [License](#-license)
+- [The Problem](#the-problem)
+- [The Solution](#the-solution)
+- [Key Features](#key-features)
+- [Architecture](#architecture)
+- [AI & ML Pipeline](#ai--ml-pipeline)
+- [Supported Languages](#supported-languages)
+- [Framing Protocol](#framing-protocol)
+- [Performance Targets](#performance-targets)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Building the APK](#building-the-apk)
+- [Running on Device](#running-on-device)
+- [App Screens](#app-screens)
+- [Roadmap](#roadmap)
+- [SIH Compliance](#sih-compliance)
+- [Permissions](#permissions)
+- [License](#license)
 
 ---
 
@@ -466,4 +470,3 @@ This project is licensed under the **MIT License**. All bundled AI models are op
   Built with ❤️ for <strong>Smart India Hackathon 2026</strong> — ISRO Problem Statement 26173<br/>
   <em>"Voice for every Indian, everywhere, offline."</em>
 </p>
-]]>
