@@ -51,11 +51,19 @@ class TransceiverService : Service() {
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     val notification: Notification = NotificationCompat.Builder(this, "itantra_channel")
       .setContentTitle("iTantra Walkie-Talkie Active")
-      .setContentText("Connected to Peer")
-      .setSmallIcon(android.R.drawable.presence_online)
+      .setContentText("Offline mesh transceiver running")
+      .setSmallIcon(android.R.drawable.ic_btn_speak_now)
       .setOngoing(true)
       .build()
-    startForeground(1, notification)
+    try {
+      startForeground(1, notification)
+    } catch (e: SecurityException) {
+      // Android 14+: RECORD_AUDIO must be granted at runtime before calling startForeground
+      // with foregroundServiceType=microphone. If permission was revoked, stop gracefully.
+      android.util.Log.e("iTantra", "startForeground failed (permission not granted): ${e.message}")
+      stopSelf()
+      return START_NOT_STICKY
+    }
     return START_STICKY
   }
 

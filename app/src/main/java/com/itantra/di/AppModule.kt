@@ -45,23 +45,38 @@ object AppModule {
   @Provides @Singleton
   fun provideTtsEngine(engine: SherpaTtsEngine): TtsEngine = engine
 
+  /**
+   * Creates the VoiceTransceiver. If AndroidVoiceTransceiver fails to initialize
+   * (e.g. native sherpa-onnx .so not loaded), returns a no-op fallback instead
+   * of letting the Hilt SingletonComponent enter a broken state — which was the
+   * root cause of the Downloads screen crash.
+   */
   @Provides @Singleton
   fun provideVoiceTransceiver(
     @ApplicationContext ctx: Context,
     sherpaAsr: SherpaAsrEngine,
     sherpaTts: SherpaTtsEngine
   ): VoiceTransceiver {
-    return AndroidVoiceTransceiver(ctx, sherpaAsr, sherpaTts)
+    return try {
+      AndroidVoiceTransceiver(ctx, sherpaAsr, sherpaTts)
+    } catch (e: Throwable) {
+      android.util.Log.e("iTantra", "VoiceTransceiver init failed — using no-op fallback", e)
+      NoOpVoiceTransceiver()
+    }
   }
 
   @Provides @Singleton
   fun provideWifiDirectTransport(): WifiDirectTransport = WifiDirectTransport()
+
   @Provides @Singleton
   fun provideBluetoothTransport(): BluetoothTransport = BluetoothTransport()
+
   @Provides @Singleton
   fun providePttStateMachine(): PttStateMachine = PttStateMachine()
+
   @Provides @Singleton
   fun providePriorityRouter(): PriorityRouter = PriorityRouter()
+
   @Provides @Singleton
   fun provideTransportManager(
     wifi: WifiDirectTransport,
@@ -69,4 +84,25 @@ object AppModule {
     router: PriorityRouter,
     ptt: PttStateMachine
   ): TransportManager = TransportManager(wifi, bt, router, ptt)
+}
+
+/**
+ * No-op VoiceTransceiver returned when the native sherpa-onnx library
+ * is unavailable. Prevents Hilt graph corruption so all screens —
+ * including Downloads — load correctly even without audio models.
+ */
+private class NoOpVoiceTransceiver : VoiceTransceiver {
+  override fun startListening(
+    langCode: String,
+    onPartial: (String) -> Unit,
+    onRms: (Float) -> Unit,
+    onResult: (String) -> Unit
+  ) {
+    android.util.Log.w("iTantra", "NoOpVoiceTransceiver: startListening — no-op (native lib unavailable)")
+  }
+  override fun stopListening() {}
+  override fun speak(text: String, langCode: String) {}
+  override fun stopSpeaking() {}
+  override fun isAvailable(): Boolean = false
+  override fun release() {}
 }
