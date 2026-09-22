@@ -1,8 +1,11 @@
 package com.itantra.presentation.transceiver
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -31,22 +34,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itantra.presentation.theme.ITantraColors
+import com.itantra.presentation.theme.ITantraShapes
+import com.itantra.presentation.theme.ITantraType
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-// Design tokens
-private val Navy = Color(0xFF1B2B4B)        // accent only (chips, send btn)
-private val NavyLight = Color(0xFF2C3E6B)
-private val PttIdle = Color(0xFF37474F)      // dark blue-grey — not navy slop
-private val Surface = Color(0xFFF7F8FA)
-private val DividerColor = Color(0xFFE4E7ED)
-private val TextPrimary = Color(0xFF111827)
-private val TextSecondary = Color(0xFF6B7280)
-private val Green = Color(0xFF16A34A)
-private val Red = Color(0xFFDC2626)
-private val Amber = Color(0xFFD97706)
-private val Blue = Color(0xFF2563EB)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,35 +59,50 @@ fun TransceiverScreen(
         }
     }
 
+    if (showConnectDialog) {
+        ConnectDialog(
+            state = state,
+            peerIpInput = peerIpInput,
+            onIpChange = { peerIpInput = it },
+            onConnect = { ip ->
+                onIntent(TransceiverIntent.ConnectPeer(ip.trim()))
+                showConnectDialog = false
+            },
+            onStartServer = {
+                onIntent(TransceiverIntent.ConnectPeer(""))
+                showConnectDialog = false
+            },
+            onDismiss = { showConnectDialog = false }
+        )
+    }
+
     Scaffold(
-        containerColor = Color.White,
+        containerColor = ITantraColors.Background,
         topBar = {
             Column {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.White,
-                        titleContentColor = TextPrimary
+                        containerColor = ITantraColors.Background,
+                        titleContentColor = ITantraColors.TextPrimary
                     ),
                     title = {
                         Text(
-                            "iTantra",
+                            "Transceiver",
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp,
-                            color = Navy
+                            color = ITantraColors.TextPrimary
                         )
                     },
                     actions = {
-                        // Mode toggle: PTT / Full Duplex
                         val isDuplex = state.channelMode == com.itantra.domain.model.TransmitMode.DUPLEX
                         CompactChip(
                             label = if (isDuplex) "FD" else "PTT",
                             onClick = { onIntent(TransceiverIntent.ToggleMode) },
-                            containerColor = if (isDuplex) PttIdle else Surface,
-                            contentColor = if (isDuplex) Color.White else TextSecondary,
-                            borderColor = if (isDuplex) PttIdle else DividerColor
+                            containerColor = if (isDuplex) ITantraColors.Primary else ITantraColors.Surface,
+                            contentColor = if (isDuplex) Color.White else ITantraColors.TextSecondary,
+                            borderColor = if (isDuplex) ITantraColors.Primary else ITantraColors.Border
                         )
                         Spacer(Modifier.width(6.dp))
-                        // Language selector
                         CompactChip(
                             label = when (state.srcLang) {
                                 com.itantra.domain.model.Language.HINDI -> "HI"
@@ -110,23 +118,21 @@ fun TransceiverScreen(
                                 }
                                 onIntent(TransceiverIntent.SelectLanguage(next, next))
                             },
-                            containerColor = Surface,
-                            contentColor = Navy,
-                            borderColor = Navy.copy(alpha = 0.25f)
+                            containerColor = ITantraColors.Surface,
+                            contentColor = ITantraColors.TextPrimary,
+                            borderColor = ITantraColors.Border
                         )
                         Spacer(Modifier.width(6.dp))
-                        // SOS
                         CompactChip(
                             label = "SOS",
                             onClick = { onIntent(TransceiverIntent.SendAlert("SOS")) },
-                            containerColor = Red,
+                            containerColor = ITantraColors.Error,
                             contentColor = Color.White,
-                            borderColor = Red
+                            borderColor = ITantraColors.Error
                         )
                         Spacer(Modifier.width(12.dp))
                     }
                 )
-                // Connection status strip
                 ConnectionStatusBar(
                     connectionState = state.connectionState,
                     localIp = state.localIp,
@@ -136,7 +142,7 @@ fun TransceiverScreen(
                         showConnectDialog = true
                     }
                 )
-                HorizontalDivider(color = DividerColor, thickness = 1.dp)
+                HorizontalDivider(color = ITantraColors.Border, thickness = 1.dp)
             }
         }
     ) { padding ->
@@ -145,30 +151,12 @@ fun TransceiverScreen(
             if (showConnectDialog) onIntent(TransceiverIntent.RefreshNetwork)
         }
 
-        if (showConnectDialog) {
-            ConnectDialog(
-                state = state,
-                peerIpInput = peerIpInput,
-                onIpChange = { peerIpInput = it },
-                onConnect = { ip ->
-                    onIntent(TransceiverIntent.ConnectPeer(ip.trim()))
-                    showConnectDialog = false
-                },
-                onStartServer = {
-                    onIntent(TransceiverIntent.ConnectPeer(""))
-                    showConnectDialog = false
-                },
-                onDismiss = { showConnectDialog = false }
-            )
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // ── Message feed ──────────────────────────────────────
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -176,7 +164,7 @@ fun TransceiverScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 12.dp)
+                contentPadding = PaddingValues(top = 12.dp, bottom = 20.dp)
             ) {
                 if (state.messageHistory.isEmpty()) {
                     item {
@@ -188,7 +176,7 @@ fun TransceiverScreen(
                         ) {
                             Text(
                                 "No messages yet\nHold PTT to transmit",
-                                color = TextSecondary,
+                                color = ITantraColors.TextSecondary,
                                 fontSize = 14.sp,
                                 textAlign = TextAlign.Center,
                                 lineHeight = 22.sp
@@ -201,25 +189,18 @@ fun TransceiverScreen(
                 }
             }
 
-            // ── Live transcript ───────────────────────────────────
             if (state.currentTranscript.isNotBlank() &&
                 state.pttUiState == PttUiState.LISTENING
             ) {
                 TranscriptBar(text = state.currentTranscript)
             }
 
-            // ── Alert banner ──────────────────────────────────────
-            if (state.isAlertActive && state.alertTranscript != null) {
-                AlertBanner(text = state.alertTranscript)
-            }
+            HorizontalDivider(color = ITantraColors.Border, thickness = 1.dp)
 
-            HorizontalDivider(color = DividerColor, thickness = 1.dp)
-
-            // ── Transmit zone ─────────────────────────────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.White)
+                    .background(ITantraColors.Background)
                     .padding(top = 12.dp, bottom = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -227,15 +208,22 @@ fun TransceiverScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Section label
                     Text(
                         text = "TRANSMISSION",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
+                        color = ITantraColors.TextSecondary,
                         letterSpacing = 2.sp
                     )
-                    // PTT button — primary action
+                    Button(
+                        onClick = { onIntent(TransceiverIntent.SendAlert("SOS")) },
+                        colors = ButtonDefaults.buttonColors(containerColor = ITantraColors.Error),
+                        shape = ITantraShapes.Button,
+                        modifier = Modifier.height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 0.dp)
+                    ) {
+                        Text("⚠ SOS", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
                     PttButton(
                         state = state.pttUiState,
                         isFloorLocked = state.isFloorLocked,
@@ -245,31 +233,21 @@ fun TransceiverScreen(
                         onRelease = { onIntent(TransceiverIntent.FloorRelease) },
                         modifier = Modifier.testTag("pttButton")
                     )
-                    // SOS — secondary, below PTT, compact
-                    Button(
-                        onClick = { onIntent(TransceiverIntent.SendAlert("SOS")) },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Red),
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                        modifier = Modifier.testTag("sosButton")
+                    AnimatedVisibility(
+                        visible = state.sosToast != null,
+                        enter = fadeIn(tween(200)),
+                        exit = fadeOut(tween(300))
                     ) {
-                        Text(
-                            text = "⚠  SOS",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            letterSpacing = 0.8.sp
-                        )
+                        state.sosToast?.let { toast -> SosToastRow(toast = toast) }
                     }
                 }
             }
 
-            // ── Text input row ────────────────────────────────────
-            HorizontalDivider(color = DividerColor, thickness = 1.dp)
+            HorizontalDivider(color = ITantraColors.Border, thickness = 1.dp)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.White)
+                    .background(ITantraColors.Background)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -281,16 +259,16 @@ fun TransceiverScreen(
                         Text(
                             "Hold PTT or type...",
                             fontSize = 15.sp,
-                            color = TextSecondary
+                            color = ITantraColors.TextSecondary
                         )
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(24.dp),
+                    shape = ITantraShapes.Input,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Navy,
-                        unfocusedBorderColor = DividerColor,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
+                        focusedBorderColor = ITantraColors.Primary,
+                        unfocusedBorderColor = ITantraColors.Border,
+                        focusedTextColor = ITantraColors.TextPrimary,
+                        unfocusedTextColor = ITantraColors.TextPrimary
                     ),
                     modifier = Modifier.weight(1f),
                     textStyle = LocalTextStyle.current.copy(fontSize = 15.sp)
@@ -303,8 +281,8 @@ fun TransceiverScreen(
                             messageInput = ""
                         }
                     },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Navy),
+                    shape = ITantraShapes.Button,
+                    colors = ButtonDefaults.buttonColors(containerColor = ITantraColors.Primary),
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp)
                 ) {
                     Text("Send", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -313,8 +291,6 @@ fun TransceiverScreen(
         }
     }
 }
-
-// ── Sub-components ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun CompactChip(
@@ -326,22 +302,14 @@ private fun CompactChip(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
+        shape = ITantraShapes.Pill,
         color = containerColor,
         modifier = Modifier
-            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
+            .border(1.dp, borderColor, ITantraShapes.Pill)
             .height(36.dp)
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(horizontal = 14.dp)
-        ) {
-            Text(
-                label,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = contentColor
-            )
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp)) {
+            Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = contentColor)
         }
     }
 }
@@ -355,58 +323,31 @@ private fun ConnectionStatusBar(
 ) {
     val dotColor by animateColorAsState(
         targetValue = when (connectionState) {
-            com.itantra.data.transport.TransportState.CONNECTED -> Green
-            com.itantra.data.transport.TransportState.CONNECTING -> Amber
-            com.itantra.data.transport.TransportState.DISCOVERING -> Blue
-            else -> TextSecondary
+            com.itantra.data.transport.TransportState.CONNECTED -> ITantraColors.Success
+            com.itantra.data.transport.TransportState.CONNECTING -> ITantraColors.Amber
+            com.itantra.data.transport.TransportState.DISCOVERING -> ITantraColors.Blue
+            else -> ITantraColors.TextSecondary
         },
-        animationSpec = tween(400),
-        label = "dot"
+        animationSpec = tween(400), label = "dot"
     )
     val statusLabel = when (connectionState) {
         com.itantra.data.transport.TransportState.CONNECTED -> "Connected"
-        com.itantra.data.transport.TransportState.CONNECTING -> "Connecting…"
+        com.itantra.data.transport.TransportState.CONNECTING -> "Connecting..."
         com.itantra.data.transport.TransportState.DISCOVERING -> "Discovering"
         else -> "Not connected"
     }
-    Surface(
-        onClick = onClick,
-        color = Surface,
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Surface(onClick = onClick, color = ITantraColors.Surface, modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // IP address
-            Text(
-                text = localIp,
-                fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace,
-                color = TextSecondary
-            )
-            // Status
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(
-                    Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(dotColor)
-                )
-                Text(
-                    statusLabel,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = TextSecondary
-                )
+            Text(localIp, fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = ITantraColors.TextSecondary)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(dotColor))
+                Text(statusLabel, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ITantraColors.TextSecondary)
                 if (gatewayIp != null && connectionState != com.itantra.data.transport.TransportState.CONNECTED) {
-                    Text("· $gatewayIp", fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = TextSecondary.copy(alpha = 0.6f))
+                    Text("- $gatewayIp", fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = ITantraColors.TextSecondary.copy(alpha = 0.6f))
                 }
             }
         }
@@ -415,7 +356,6 @@ private fun ConnectionStatusBar(
 
 @Composable
 private fun MessageBubble(item: MessageItem) {
-    val isSent = !item.isAlert && item.frame.payloadText.isNotBlank()
     val isAlert = item.isAlert
     val time = remember(item.timestamp) {
         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(item.timestamp))
@@ -424,59 +364,37 @@ private fun MessageBubble(item: MessageItem) {
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isSent && !isAlert) Arrangement.End else Arrangement.Start
+        horizontalArrangement = if (item.isOutgoing && !isAlert) Arrangement.End else Arrangement.Start
     ) {
         if (isAlert) {
-            // Alert bubble — full width, red tint
             Surface(
-                shape = RoundedCornerShape(10.dp),
+                shape = ITantraShapes.Small,
                 color = Color(0xFFFEF2F2),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Red.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                modifier = Modifier.fillMaxWidth().border(1.dp, ITantraColors.Error.copy(alpha = 0.3f), ITantraShapes.Small)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "⚠ ${item.frame.payloadText}",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Red,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(time, fontSize = 12.sp, color = Red.copy(alpha = 0.6f))
+                    Text("! ${item.frame.payloadText}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ITantraColors.Error, modifier = Modifier.weight(1f))
+                    Text(time, fontSize = 12.sp, color = ITantraColors.Error.copy(alpha = 0.6f))
                 }
             }
         } else {
-            // Chat bubble
-            val bubbleColor = if (isSent) PttIdle else Surface
-            val textColor = if (isSent) Color.White else TextPrimary
-            val metaColor = if (isSent) Color.White.copy(alpha = 0.6f) else TextSecondary
-            val shape = if (isSent)
+            val bubbleColor = if (item.isOutgoing) ITantraColors.Primary else ITantraColors.Surface
+            val textColor = if (item.isOutgoing) Color.White else ITantraColors.TextPrimary
+            val metaColor = if (item.isOutgoing) Color.White.copy(alpha = 0.6f) else ITantraColors.TextSecondary
+            val shape = if (item.isOutgoing)
                 RoundedCornerShape(18.dp, 4.dp, 18.dp, 18.dp)
             else
                 RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)
 
-            Surface(
-                shape = shape,
-                color = bubbleColor,
-                modifier = Modifier.widthIn(min = 80.dp, max = 280.dp)
-            ) {
+            Surface(shape = shape, color = bubbleColor, modifier = Modifier.widthIn(min = 80.dp, max = 280.dp)) {
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text(
-                        text = item.frame.payloadText,
-                        fontSize = 15.sp,
-                        color = textColor,
-                        lineHeight = 22.sp
-                    )
+                    Text(item.frame.payloadText, fontSize = 15.sp, color = textColor, lineHeight = 22.sp)
                     Spacer(Modifier.height(4.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(langTag, fontSize = 11.sp, color = metaColor, fontWeight = FontWeight.SemiBold)
                         Text(time, fontSize = 11.sp, color = metaColor)
                     }
@@ -487,46 +405,46 @@ private fun MessageBubble(item: MessageItem) {
 }
 
 @Composable
-private fun TranscriptBar(text: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFF0F4FF))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+private fun SosToastRow(toast: SosToastState) {
+    val isSuccess = toast is SosToastState.Success
+    val contentColor = if (isSuccess) ITantraColors.Success else ITantraColors.Error
+    val bgColor = contentColor.copy(alpha = 0.1f)
+    val borderColor = contentColor.copy(alpha = 0.3f)
+    val icon = if (isSuccess) "OK" else "!!"
+    val title = if (isSuccess) "SOS SENT" else "SOS FAILED"
+    val subtitle = if (isSuccess) "Emergency alert transmitted" else "Unable to send SOS"
+
+    Surface(
+        shape = ITantraShapes.Small,
+        color = bgColor,
+        modifier = Modifier.widthIn(max = 280.dp).border(1.dp, borderColor, ITantraShapes.Small)
     ) {
-        Box(
-            Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(Green)
-        )
-        Text(
-            text = text,
-            fontSize = 13.sp,
-            color = Navy,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(icon, fontSize = 14.sp, color = contentColor, fontWeight = FontWeight.Bold)
+            Column {
+                Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = contentColor)
+                Text(subtitle, fontSize = 11.sp, color = contentColor.copy(alpha = 0.7f))
+            }
+        }
     }
 }
 
 @Composable
-private fun AlertBanner(text: String) {
+private fun TranscriptBar(text: String) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Red)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier.fillMaxWidth().background(ITantraColors.Surface).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(ITantraColors.Success))
         Text(
-            "⚠  $text",
-            color = Color.White,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
+            text = text,
+            style = ITantraType.bodySmall.copy(color = ITantraColors.TextPrimary),
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
     }
@@ -546,29 +464,21 @@ fun PttButton(
     val isBusy = isFloorLocked || state == PttUiState.BUSY
 
     val targetColor = when {
-        isBusy -> Red
-        isListening -> Green
-        state == PttUiState.SENDING -> Blue
-        state == PttUiState.SENT -> Green.copy(alpha = 0.7f)
-        else -> PttIdle   // dark blue-grey slate
+        isBusy      -> ITantraColors.Error
+        isListening -> ITantraColors.Success
+        state == PttUiState.SENDING -> ITantraColors.Blue
+        state == PttUiState.SENT    -> ITantraColors.Success.copy(alpha = 0.7f)
+        else        -> ITantraColors.Primary
     }
-    val buttonColor by animateColorAsState(
-        targetValue = targetColor,
-        animationSpec = tween(200),
-        label = "pttColor"
-    )
-    val scale by animateFloatAsState(
-        targetValue = if (isListening) 1.06f else 1f,
-        animationSpec = tween(150),
-        label = "pttScale"
-    )
+    val buttonColor by animateColorAsState(targetValue = targetColor, animationSpec = tween(200), label = "pttColor")
+    val scale by animateFloatAsState(targetValue = if (isListening) 1.06f else 1f, animationSpec = tween(150), label = "pttScale")
 
     val label = when {
-        isBusy -> "CHANNEL\nBUSY"
+        isBusy      -> "CHANNEL\nBUSY"
         isListening -> "RELEASE\nTO SEND"
-        state == PttUiState.SENDING -> "TRANSMITTING…"
-        state == PttUiState.SENT -> "SENT ✓"
-        else -> "HOLD\nTO TALK"
+        state == PttUiState.SENDING -> "TRANSMITTING..."
+        state == PttUiState.SENT    -> "SENT"
+        else        -> "HOLD\nTO TALK"
     }
 
     Box(
@@ -590,14 +500,8 @@ fun PttButton(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Subtle ring when listening
         if (isListening) {
-            Box(
-                Modifier
-                    .size(154.dp)
-                    .clip(CircleShape)
-                    .border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape)
-            )
+            Box(Modifier.size(154.dp).clip(CircleShape).border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape))
         }
         Text(
             text = label,
@@ -622,131 +526,69 @@ private fun ConnectDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Color.White,
-        title = {
-            Text(
-                "Connect to Peer",
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-        },
+        title = { Text("Connect to Peer", fontWeight = FontWeight.Bold, color = ITantraColors.TextPrimary) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Device info
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Surface,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Surface(shape = ITantraShapes.Small, color = ITantraColors.Surface, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Your IP", fontSize = 12.sp, color = TextSecondary)
-                            Text(
-                                state.localIp,
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
-                            )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Your IP", fontSize = 12.sp, color = ITantraColors.TextSecondary)
+                            Text(state.localIp, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, color = ITantraColors.TextPrimary)
                         }
                         if (state.gatewayIp != null) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Gateway", fontSize = 12.sp, color = TextSecondary)
-                                Text(
-                                    state.gatewayIp,
-                                    fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Navy
-                                )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Gateway", fontSize = 12.sp, color = ITantraColors.TextSecondary)
+                                Text(state.gatewayIp, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, color = ITantraColors.TextPrimary)
                             }
                         }
                     }
                 }
-
-                // Discovered peers
                 if (state.discoveredPeers.isNotEmpty()) {
-                    Text("Nearby peers", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                    Text("Nearby peers", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = ITantraColors.TextSecondary)
                     state.discoveredPeers.forEach { peer ->
                         Surface(
                             onClick = { onConnect(peer.ip) },
-                            shape = RoundedCornerShape(8.dp),
-                            color = Surface,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(1.dp, DividerColor, RoundedCornerShape(8.dp))
+                            shape = ITantraShapes.Small,
+                            color = ITantraColors.Surface,
+                            modifier = Modifier.fillMaxWidth().border(1.dp, ITantraColors.Border, ITantraShapes.Small)
                         ) {
-                            Row(
-                                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column {
-                                    Text(peer.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
-                                    Text(peer.ip, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = TextSecondary)
+                                    Text(peer.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ITantraColors.TextPrimary)
+                                    Text(peer.ip, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = ITantraColors.TextSecondary)
                                 }
-                                Text("Connect →", fontSize = 12.sp, color = Navy, fontWeight = FontWeight.SemiBold)
+                                Text("Connect", fontSize = 12.sp, color = ITantraColors.TextPrimary, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
                 }
-
-                // Quick presets
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.gatewayIp != null) {
-                        OutlinedButton(
-                            onClick = { onIpChange(state.gatewayIp) },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor)
-                        ) {
-                            Text("Gateway", fontSize = 12.sp, color = TextSecondary)
+                        OutlinedButton(onClick = { onIpChange(state.gatewayIp) }, modifier = Modifier.weight(1f), shape = ITantraShapes.Small, border = androidx.compose.foundation.BorderStroke(1.dp, ITantraColors.Border)) {
+                            Text("Gateway", fontSize = 12.sp, color = ITantraColors.TextSecondary)
                         }
                     }
-                    OutlinedButton(
-                        onClick = { onIpChange("192.168.43.1") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor)
-                    ) {
-                        Text("Hotspot", fontSize = 12.sp, color = TextSecondary)
+                    OutlinedButton(onClick = { onIpChange("192.168.43.1") }, modifier = Modifier.weight(1f), shape = ITantraShapes.Small, border = androidx.compose.foundation.BorderStroke(1.dp, ITantraColors.Border)) {
+                        Text("Hotspot", fontSize = 12.sp, color = ITantraColors.TextSecondary)
                     }
                 }
-
-                // Manual IP input
                 OutlinedTextField(
-                    value = peerIpInput,
-                    onValueChange = onIpChange,
+                    value = peerIpInput, onValueChange = onIpChange,
                     label = { Text("Peer IP address", fontSize = 12.sp) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Navy,
-                        unfocusedBorderColor = DividerColor
-                    ),
+                    singleLine = true, shape = ITantraShapes.Small,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ITantraColors.Primary, unfocusedBorderColor = ITantraColors.Border),
                     modifier = Modifier.fillMaxWidth(),
                     textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 14.sp)
                 )
             }
         },
         confirmButton = {
-            Button(
-                onClick = { onConnect(peerIpInput) },
-                colors = ButtonDefaults.buttonColors(containerColor = Navy),
-                shape = RoundedCornerShape(8.dp)
-            ) {
+            Button(onClick = { onConnect(peerIpInput) }, colors = ButtonDefaults.buttonColors(containerColor = ITantraColors.Primary), shape = ITantraShapes.Button) {
                 Text("Connect")
             }
         },
         dismissButton = {
-            TextButton(onClick = onStartServer) {
-                Text("Start server", color = TextSecondary)
-            }
+            TextButton(onClick = onStartServer) { Text("Start server", color = ITantraColors.TextSecondary) }
         }
     )
 }

@@ -72,7 +72,7 @@ class TransceiverViewModel @Inject constructor(
       seqId = (seqCounter++) % 65535,
       payloadText = text
     )
-    val item = MessageItem(f, false, System.currentTimeMillis(), 2.0)
+    val item = MessageItem(f, false, isOutgoing = true, System.currentTimeMillis(), 2.0)
     _state.value = _state.value.copy(
       messageHistory = _state.value.messageHistory + item,
       currentTranscript = text,
@@ -270,7 +270,12 @@ class TransceiverViewModel @Inject constructor(
         _state.value = _state.value.copy(srcLang = intent.src, dstLang = intent.dst)
       }
       is TransceiverIntent.SendAlert -> {
-        _state.value = _state.value.copy(isAlertActive = true, alertTranscript = intent.text)
+        // Optimistically show SOS SENT; switch to Failure on transport error; auto-clear after 3s
+        _state.value = _state.value.copy(
+          isAlertActive = true,
+          alertTranscript = intent.text,
+          sosToast = SosToastState.Success
+        )
         val alertFrame = Frame(
           mode = _state.value.channelMode,
           isAlert = true,
@@ -281,10 +286,16 @@ class TransceiverViewModel @Inject constructor(
           seqId = (seqCounter++) % 65535,
           payloadText = intent.text
         )
-        val item = MessageItem(alertFrame, true, System.currentTimeMillis(), 4.0)
+        val item = MessageItem(alertFrame, true, isOutgoing = true, System.currentTimeMillis(), 4.0)
         _state.value = _state.value.copy(messageHistory = _state.value.messageHistory + item)
         vmScope.launch {
-          try { transportManager.send(alertFrame) } catch (_: Throwable) {}
+          try {
+            transportManager.send(alertFrame)
+          } catch (_: Throwable) {
+            _state.value = _state.value.copy(sosToast = SosToastState.Failure)
+          }
+          delay(3_000L)
+          _state.value = _state.value.copy(sosToast = null)
         }
       }
       is TransceiverIntent.ConnectPeer -> {
@@ -349,7 +360,7 @@ class TransceiverViewModel @Inject constructor(
         }
 
         // 2. Non-empty payload: Voice / Text / Alert message
-        val item = MessageItem(frame, frame.isAlert, System.currentTimeMillis(), 2.5)
+        val item = MessageItem(frame, frame.isAlert, isOutgoing = false, System.currentTimeMillis(), 2.5)
         _state.value = _state.value.copy(
           messageHistory = _state.value.messageHistory + item,
           currentTranscript = frame.payloadText,
