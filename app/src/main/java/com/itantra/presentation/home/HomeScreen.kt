@@ -1,11 +1,14 @@
 package com.itantra.presentation.home
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +30,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Radar
@@ -56,6 +61,7 @@ import com.itantra.data.transport.TransportState
 import com.itantra.presentation.theme.ITantraColors
 import com.itantra.presentation.theme.ITantraShapes
 import com.itantra.presentation.theme.ITantraType
+import com.itantra.presentation.transceiver.SosToastState
 import com.itantra.presentation.transceiver.TransceiverIntent
 import com.itantra.presentation.transceiver.TransceiverUiState
 
@@ -135,6 +141,55 @@ fun HomeScreen(
         // ── Mesh status panel ─────────────────────────────────────────────────
         MeshStatusPanel(state = state)
 
+        Spacer(Modifier.height(12.dp))
+
+        // ── Performance HUD card ──────────────────────────────────────────
+        PerfHudCard(
+            perf = state.devicePerf,
+            expanded = state.showPerfHud,
+            onToggleExpand = { onIntent(TransceiverIntent.TogglePerfHud) }
+        )
+
+        // ── SOS received banner ────────────────────────────────────────────
+        AnimatedVisibility(
+            visible = state.sosToast is SosToastState.Success && !state.findMyPhoneActive,
+            enter = fadeIn(tween(300)),
+            exit = fadeOut(tween(300))
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .border(1.dp, ITantraColors.Error.copy(alpha = 0.3f), ITantraShapes.Small),
+                shape = ITantraShapes.Small,
+                color = ITantraColors.Error.copy(alpha = 0.07f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "⚠️ SOS received",
+                        style = ITantraType.body.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = ITantraColors.Error
+                        )
+                    )
+                    Text(
+                        text = "Find Now →",
+                        style = ITantraType.body.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = ITantraColors.Primary
+                        ),
+                        modifier = Modifier.clickable { onNavigate("findphone") }
+                    )
+                }
+            }
+        }
+
         Spacer(Modifier.height(24.dp))
 
         // ── Section label ──────────────────────────────────────────────────────
@@ -153,6 +208,7 @@ fun HomeScreen(
             modifier = Modifier.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Row 1: Transceiver + Radar
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -178,6 +234,7 @@ fun HomeScreen(
                     onClick = { onNavigate("radar") }
                 )
             }
+            // Row 2: Downloads + Emergency SOS
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -202,6 +259,32 @@ fun HomeScreen(
                     isWarning = true,
                     modifier = Modifier.weight(1f),
                     onClick = { showSosDialog = true }
+                )
+            }
+            // Row 3: Rescue Beacon + Siren Locate
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ActionCard(
+                    title = "Rescue Beacon",
+                    description = "Locate via Bluetooth",
+                    icon = Icons.Default.LocationOn,
+                    iconTint = ITantraColors.TextPrimary,
+                    iconBg = ITantraColors.SurfaceVariant,
+                    isPrimary = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onNavigate("findphone") }
+                )
+                ActionCard(
+                    title = "Siren Locate",
+                    description = "Audio proximity nav",
+                    icon = Icons.Default.GraphicEq,
+                    iconTint = ITantraColors.TextPrimary,
+                    iconBg = ITantraColors.SurfaceVariant,
+                    isPrimary = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onNavigate("locate") }
                 )
             }
         }
