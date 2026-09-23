@@ -208,7 +208,7 @@ fun HomeScreen(
             modifier = Modifier.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Row 1: Transceiver + Radar
+            // Row 1: Transceiver + Emergency SOS
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -224,17 +224,18 @@ fun HomeScreen(
                     onClick = { onNavigate("transceiver") }
                 )
                 ActionCard(
-                    title = "Mesh Radar",
-                    description = "Nearby devices",
-                    icon = Icons.Outlined.Radar,
-                    iconTint = ITantraColors.TextPrimary,
-                    iconBg = ITantraColors.SurfaceVariant,
+                    title = "Emergency SOS",
+                    description = "Broadcast alert",
+                    icon = Icons.Default.Warning,
+                    iconTint = Color.White,
+                    iconBg = ITantraColors.Error,
                     isPrimary = false,
+                    isWarning = true,
                     modifier = Modifier.weight(1f),
-                    onClick = { onNavigate("radar") }
+                    onClick = { showSosDialog = true }
                 )
             }
-            // Row 2: Downloads + Emergency SOS
+            // Row 2: Downloads + Mesh Radar
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -250,15 +251,14 @@ fun HomeScreen(
                     onClick = { onNavigate("downloads") }
                 )
                 ActionCard(
-                    title = "Emergency SOS",
-                    description = "Broadcast alert",
-                    icon = Icons.Default.Warning,
-                    iconTint = Color.White,
-                    iconBg = ITantraColors.Error,
+                    title = "Mesh Radar",
+                    description = "Nearby devices",
+                    icon = Icons.Outlined.Radar,
+                    iconTint = ITantraColors.TextPrimary,
+                    iconBg = ITantraColors.SurfaceVariant,
                     isPrimary = false,
-                    isWarning = true,
                     modifier = Modifier.weight(1f),
-                    onClick = { showSosDialog = true }
+                    onClick = { onNavigate("radar") }
                 )
             }
             // Row 3: Rescue Beacon + Siren Locate
