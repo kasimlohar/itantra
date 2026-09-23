@@ -28,6 +28,10 @@ class MainActivity : ComponentActivity() {
             if (android.os.Build.VERSION.SDK_INT >= 33) {
                 perms.add(android.Manifest.permission.POST_NOTIFICATIONS)
             }
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                perms.add(android.Manifest.permission.BLUETOOTH_SCAN)
+                perms.add(android.Manifest.permission.BLUETOOTH_CONNECT)
+            }
             val missing = perms.filter {
                 checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
             }

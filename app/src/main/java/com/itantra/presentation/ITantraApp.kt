@@ -33,7 +33,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.itantra.presentation.downloads.DownloadsScreen
+import com.itantra.presentation.findphone.FindMyPhoneScreen
 import com.itantra.presentation.home.HomeScreen
+import com.itantra.presentation.locate.LocateScreen
 import com.itantra.presentation.radar.RadarScreen
 import com.itantra.presentation.theme.ITantraColors
 import com.itantra.presentation.theme.ITantraType
@@ -46,6 +48,9 @@ sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
     object Transceiver : Dest("transceiver", "Transceiver", Icons.Default.GraphicEq)
     object Radar       : Dest("radar",       "Radar",       Icons.Default.Radar)
     object Downloads   : Dest("downloads",   "Downloads",   Icons.Default.Download)
+    // Not in bottom nav — reached via HomeScreen action cards
+    object FindPhone   : Dest("findphone",   "Rescue Beacon", Icons.Default.Home)
+    object Locate      : Dest("locate",      "Siren Locate", Icons.Default.Home)
 }
 
 private val navDests = listOf(Dest.Home, Dest.Transceiver, Dest.Radar, Dest.Downloads)
@@ -108,6 +113,18 @@ fun ITantraApp(viewModel: TransceiverViewModel) {
             }
             composable("downloads") {
                 DownloadsScreen()
+            }
+            composable("findphone") {
+                FindMyPhoneScreen(
+                    state = state,
+                    onIntent = { viewModel.process(it) }
+                )
+            }
+            composable("locate") {
+                LocateScreen(
+                    state = state,
+                    onIntent = { viewModel.process(it) }
+                )
             }
         }
     }
