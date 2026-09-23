@@ -54,6 +54,7 @@ import com.itantra.presentation.theme.PillType
 import com.itantra.presentation.theme.PrimaryButton
 import com.itantra.presentation.theme.SecondaryButton
 import com.itantra.presentation.theme.StatusPill
+import com.itantra.presentation.transceiver.PeerConnectionStatus
 import com.itantra.presentation.transceiver.TransceiverIntent
 import com.itantra.presentation.transceiver.TransceiverUiState
 import kotlin.math.PI
@@ -141,44 +142,6 @@ fun RadarScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // ── Selected peer detail card ──────────────────────────────────────────
-        if (selectedPeer != null) {
-            val peer = selectedPeer!!
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                shape = ITantraShapes.Card,
-                color = ITantraColors.Surface
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text(
-                            text = peer.name,
-                            style = ITantraType.body.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = peer.ip,
-                            style = ITantraType.caption.copy(fontFamily = FontFamily.Monospace)
-                        )
-                    }
-                    PrimaryButton(
-                        text = "Connect",
-                        onClick = { onIntent(TransceiverIntent.ConnectPeer(peer.ip)) },
-                        modifier = Modifier.height(40.dp)
-                    )
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-
         // ── Nearby devices list ─────────────────────────────────────────────────
         val peerCount = state.discoveredPeers.size
         Row(
@@ -243,13 +206,16 @@ fun RadarScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(state.discoveredPeers, key = { it.ip }) { peer ->
+                    val status = state.peerConnectionStatus(peer.ip)
                     PeerRow(
                         peer = peer,
                         isSelected = selectedPeer?.ip == peer.ip,
+                        status = status,
                         onTap = {
                             selectedPeer = if (selectedPeer?.ip == peer.ip) null else peer
                         },
-                        onConnect = { onIntent(TransceiverIntent.ConnectPeer(peer.ip)) }
+                        onConnect = { onIntent(TransceiverIntent.ConnectPeer(peer.ip)) },
+                        onDisconnect = { onIntent(TransceiverIntent.Disconnect) }
                     )
                 }
             }
@@ -262,21 +228,38 @@ fun RadarScreen(
 private fun PeerRow(
     peer: DiscoveredPeer,
     isSelected: Boolean,
+    status: PeerConnectionStatus,
     onTap: () -> Unit,
-    onConnect: () -> Unit
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit = {}
 ) {
+    val isConnected = status == PeerConnectionStatus.CONNECTED
+    val isConnecting = status == PeerConnectionStatus.CONNECTING
+    val isFailed = status == PeerConnectionStatus.FAILED
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clip(ITantraShapes.Card)
             .border(
-                width = if (isSelected) 1.5.dp else 0.5.dp,
-                color = if (isSelected) ITantraColors.Primary else ITantraColors.Border,
+                width = if (isSelected || isConnected) 1.5.dp else 0.5.dp,
+                color = when {
+                    isConnected   -> ITantraColors.Success
+                    isConnecting  -> ITantraColors.Amber
+                    isFailed      -> ITantraColors.Error.copy(alpha = 0.5f)
+                    isSelected    -> ITantraColors.Primary
+                    else          -> ITantraColors.Border
+                },
                 shape = ITantraShapes.Card
             )
             .clickable(onClick = onTap),
         shape = ITantraShapes.Card,
-        color = if (isSelected) ITantraColors.Primary.copy(alpha = 0.04f) else ITantraColors.Background
+        color = when {
+            isConnected   -> ITantraColors.Success.copy(alpha = 0.04f)
+            isConnecting  -> ITantraColors.Amber.copy(alpha = 0.04f)
+            isSelected    -> ITantraColors.Primary.copy(alpha = 0.04f)
+            else          -> ITantraColors.Background
+        }
     ) {
         Row(
             modifier = Modifier
@@ -293,7 +276,14 @@ private fun PeerRow(
                     modifier = Modifier
                         .size(10.dp)
                         .clip(CircleShape)
-                        .background(ITantraColors.Success)
+                        .background(
+                            when {
+                                isConnected   -> ITantraColors.Success
+                                isConnecting  -> ITantraColors.Amber
+                                isFailed      -> ITantraColors.Error
+                                else          -> ITantraColors.Border
+                            }
+                        )
                 )
                 Column {
                     Text(
@@ -307,17 +297,70 @@ private fun PeerRow(
                     )
                 }
             }
-            Text(
-                text = "Connect →",
-                style = ITantraType.bodySmall.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    color = ITantraColors.TextPrimary
-                ),
-                modifier = Modifier
-                    .clip(ITantraShapes.Small)
-                    .clickable(onClick = onConnect)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
+            when (status) {
+                PeerConnectionStatus.DISCOVERED -> {
+                    Text(
+                        text = "Connect →",
+                        style = ITantraType.bodySmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = ITantraColors.TextPrimary
+                        ),
+                        modifier = Modifier
+                            .clip(ITantraShapes.Small)
+                            .clickable(onClick = onConnect)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                PeerConnectionStatus.CONNECTING -> {
+                    Text(
+                        text = "Connecting…",
+                        style = ITantraType.bodySmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = ITantraColors.Amber
+                        ),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                PeerConnectionStatus.CONNECTED -> {
+                    Text(
+                        text = "Connected ✓",
+                        style = ITantraType.bodySmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = ITantraColors.Success
+                        ),
+                        modifier = Modifier
+                            .clip(ITantraShapes.Small)
+                            .clickable(onClick = onDisconnect)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                PeerConnectionStatus.FAILED -> {
+                    Text(
+                        text = "Retry →",
+                        style = ITantraType.bodySmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = ITantraColors.Error
+                        ),
+                        modifier = Modifier
+                            .clip(ITantraShapes.Small)
+                            .clickable(onClick = onConnect)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                PeerConnectionStatus.DISCONNECTED -> {
+                    Text(
+                        text = "Reconnect →",
+                        style = ITantraType.bodySmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = ITantraColors.TextPrimary
+                        ),
+                        modifier = Modifier
+                            .clip(ITantraShapes.Small)
+                            .clickable(onClick = onConnect)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
         }
     }
 }
