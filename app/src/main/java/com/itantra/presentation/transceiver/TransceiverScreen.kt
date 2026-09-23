@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itantra.domain.model.Language
 import com.itantra.presentation.theme.ITantraColors
 import com.itantra.presentation.theme.ITantraShapes
 import com.itantra.presentation.theme.ITantraType
@@ -50,7 +51,15 @@ fun TransceiverScreen(
     var showConnectDialog by remember { mutableStateOf(false) }
     var peerIpInput by remember { mutableStateOf("192.168.43.1") }
     var messageInput by remember { mutableStateOf("") }
+    var langDropdownExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    // Ordered language list: Hindi + English first, then the rest
+    val languageOrder = listOf(
+        Language.HINDI, Language.ENGLISH, Language.MARATHI,
+        Language.GUJARATI, Language.KANNADA, Language.MALAYALAM,
+        Language.TAMIL, Language.TELUGU, Language.ODIA, Language.BENGALI
+    )
 
     // Auto-scroll to latest message
     LaunchedEffect(state.messageHistory.size) {
@@ -95,33 +104,77 @@ fun TransceiverScreen(
                     },
                     actions = {
                         val isDuplex = state.channelMode == com.itantra.domain.model.TransmitMode.DUPLEX
+                        // Mode chip: Walkie Talkie (PTT/half-duplex) vs Phone (full-duplex)
                         CompactChip(
-                            label = if (isDuplex) "FD" else "PTT",
+                            label = if (isDuplex) "Phone" else "Walkie",
                             onClick = { onIntent(TransceiverIntent.ToggleMode) },
                             containerColor = if (isDuplex) ITantraColors.Primary else ITantraColors.Surface,
                             contentColor = if (isDuplex) Color.White else ITantraColors.TextSecondary,
                             borderColor = if (isDuplex) ITantraColors.Primary else ITantraColors.Border
                         )
                         Spacer(Modifier.width(6.dp))
-                        CompactChip(
-                            label = when (state.srcLang) {
-                                com.itantra.domain.model.Language.HINDI -> "HI"
-                                com.itantra.domain.model.Language.ENGLISH -> "EN"
-                                com.itantra.domain.model.Language.MARATHI -> "MR"
-                                else -> "HI"
-                            },
-                            onClick = {
-                                val next = when (state.srcLang) {
-                                    com.itantra.domain.model.Language.HINDI -> com.itantra.domain.model.Language.ENGLISH
-                                    com.itantra.domain.model.Language.ENGLISH -> com.itantra.domain.model.Language.MARATHI
-                                    else -> com.itantra.domain.model.Language.HINDI
+                        // Language dropdown — all 10 languages
+                        Box {
+                            CompactChip(
+                                label = if (state.isAutoLangDetect) "Auto" else "${langCode(state.srcLang)} ▾",
+                                onClick = {
+                                    langDropdownExpanded = !langDropdownExpanded
+                                },
+                                containerColor = ITantraColors.Surface,
+                                contentColor = ITantraColors.TextPrimary,
+                                borderColor = ITantraColors.Border
+                            )
+                            DropdownMenu(
+                                expanded = langDropdownExpanded,
+                                onDismissRequest = { langDropdownExpanded = false },
+                                modifier = Modifier
+                                    .background(Color.White)
+                                    .widthIn(min = 160.dp)
+                            ) {
+                                languageOrder.forEach { lang ->
+                                    val isSelected = !state.isAutoLangDetect && lang == state.srcLang
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = langCode(lang),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) ITantraColors.Primary else ITantraColors.TextSecondary,
+                                                    modifier = Modifier.width(28.dp)
+                                                )
+                                                Text(
+                                                    text = langName(lang),
+                                                    fontSize = 14.sp,
+                                                    color = if (isSelected) ITantraColors.Primary
+                                                            else ITantraColors.TextPrimary,
+                                                    fontWeight = if (isSelected) FontWeight.SemiBold
+                                                                 else FontWeight.Normal
+                                                )
+                                                if (isSelected) {
+                                                    Spacer(Modifier.weight(1f))
+                                                    Text(
+                                                        text = "✓",
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = ITantraColors.Primary
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            onIntent(TransceiverIntent.SelectLanguage(lang, lang))
+                                            langDropdownExpanded = false
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                    )
                                 }
-                                onIntent(TransceiverIntent.SelectLanguage(next, next))
-                            },
-                            containerColor = ITantraColors.Surface,
-                            contentColor = ITantraColors.TextPrimary,
-                            borderColor = ITantraColors.Border
-                        )
+                            }
+                        }
                         Spacer(Modifier.width(6.dp))
                         CompactChip(
                             label = "SOS",
@@ -175,7 +228,7 @@ fun TransceiverScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                "No messages yet\nHold PTT to transmit",
+                                "No messages yet\nHold Walkie Talkie to transmit",
                                 color = ITantraColors.TextSecondary,
                                 fontSize = 14.sp,
                                 textAlign = TextAlign.Center,
@@ -193,6 +246,45 @@ fun TransceiverScreen(
                 state.pttUiState == PttUiState.LISTENING
             ) {
                 TranscriptBar(text = state.currentTranscript)
+            }
+
+            // Auto-detect language toggle bar
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = ITantraColors.Surface
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            "Language Detection",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = ITantraColors.TextPrimary
+                        )
+                        Text(
+                            if (state.isAutoLangDetect) "Auto · detecting from speech"
+                            else "Manual · tap language chip to change",
+                            fontSize = 11.sp,
+                            color = ITantraColors.TextSecondary
+                        )
+                    }
+                    Switch(
+                        checked = state.isAutoLangDetect,
+                        onCheckedChange = { onIntent(TransceiverIntent.ToggleAutoLangDetect) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = ITantraColors.Primary,
+                            uncheckedThumbColor = ITantraColors.TextSecondary,
+                            uncheckedTrackColor = ITantraColors.Border
+                        )
+                    )
+                }
             }
 
             HorizontalDivider(color = ITantraColors.Border, thickness = 1.dp)
@@ -257,7 +349,7 @@ fun TransceiverScreen(
                     onValueChange = { messageInput = it },
                     placeholder = {
                         Text(
-                            "Hold PTT or type...",
+                            "Hold Walkie Talkie or type...",
                             fontSize = 15.sp,
                             color = ITantraColors.TextSecondary
                         )
@@ -298,13 +390,14 @@ private fun CompactChip(
     onClick: () -> Unit,
     containerColor: Color,
     contentColor: Color,
-    borderColor: Color
+    borderColor: Color,
+    modifier: Modifier = Modifier
 ) {
     Surface(
         onClick = onClick,
         shape = ITantraShapes.Pill,
         color = containerColor,
-        modifier = Modifier
+        modifier = modifier
             .border(1.dp, borderColor, ITantraShapes.Pill)
             .height(36.dp)
     ) {
@@ -312,6 +405,34 @@ private fun CompactChip(
             Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = contentColor)
         }
     }
+}
+
+/** Short 2-letter language code for the chip label. */
+private fun langCode(lang: com.itantra.domain.model.Language): String = when (lang) {
+    com.itantra.domain.model.Language.HINDI     -> "HI"
+    com.itantra.domain.model.Language.ENGLISH   -> "EN"
+    com.itantra.domain.model.Language.MARATHI   -> "MR"
+    com.itantra.domain.model.Language.GUJARATI  -> "GU"
+    com.itantra.domain.model.Language.KANNADA   -> "KN"
+    com.itantra.domain.model.Language.MALAYALAM -> "ML"
+    com.itantra.domain.model.Language.TAMIL     -> "TA"
+    com.itantra.domain.model.Language.TELUGU    -> "TE"
+    com.itantra.domain.model.Language.ODIA      -> "OD"
+    com.itantra.domain.model.Language.BENGALI   -> "BN"
+}
+
+/** Full language display name for the dropdown. */
+private fun langName(lang: com.itantra.domain.model.Language): String = when (lang) {
+    com.itantra.domain.model.Language.HINDI     -> "Hindi"
+    com.itantra.domain.model.Language.ENGLISH   -> "English"
+    com.itantra.domain.model.Language.MARATHI   -> "Marathi"
+    com.itantra.domain.model.Language.GUJARATI  -> "Gujarati"
+    com.itantra.domain.model.Language.KANNADA   -> "Kannada"
+    com.itantra.domain.model.Language.MALAYALAM -> "Malayalam"
+    com.itantra.domain.model.Language.TAMIL     -> "Tamil"
+    com.itantra.domain.model.Language.TELUGU    -> "Telugu"
+    com.itantra.domain.model.Language.ODIA      -> "Odia"
+    com.itantra.domain.model.Language.BENGALI   -> "Bengali"
 }
 
 @Composable

@@ -14,4 +14,25 @@ sealed interface TransceiverIntent {
   data object RefreshNetwork : TransceiverIntent
   /** Restart UDP peer discovery scan — used by the Radar Search Peers button. */
   data object RestartDiscovery : TransceiverIntent
+
+  // ── Feature A: Find My Phone ─────────────────────────────────────────────
+  /** Rescuer starts BLE RSSI homing toward the SOS sender. */
+  data object StartFindMyPhone : TransceiverIntent
+  data object StopFindMyPhone : TransceiverIntent
+
+  // ── Feature B: Device Performance HUD ────────────────────────────────────
+  /** Toggle the Performance HUD card expanded/collapsed. */
+  data object TogglePerfHud : TransceiverIntent
+
+  // ── Feature C: Locate via Siren ──────────────────────────────────────────
+  /** Rescuer starts proximity siren (frequency increases as they get closer). */
+  data object StartSirenLocate : TransceiverIntent
+  data object StopSirenLocate : TransceiverIntent
+  /** Victim sends a siren frame to trigger the rescuer's device to play a siren. */
+  data object TriggerRemoteSiren : TransceiverIntent
+
+  // ── Feature D: Language Auto-Detection ───────────────────────────────────
+  /** Toggle automatic language detection on/off. */
+  data object ToggleAutoLangDetect : TransceiverIntent
 }
+

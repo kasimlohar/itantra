@@ -5,6 +5,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
 import com.itantra.data.transport.TransportManager
 import com.itantra.data.transport.TransportState
 import com.itantra.data.ptt.PttStateMachine
@@ -15,6 +16,9 @@ import com.itantra.domain.model.Frame
 import com.itantra.domain.model.PlaybackItem
 import com.itantra.data.router.RouteDecision
 import com.itantra.data.audio.AlertAudioManager
+import com.itantra.data.audio.SirenPlayer
+import com.itantra.data.perf.PerformanceMonitor
+import com.itantra.data.proximity.BleRssiScanner
 
 @HiltViewModel
 class TransceiverViewModel @Inject constructor(
@@ -23,7 +27,10 @@ class TransceiverViewModel @Inject constructor(
   private val router: PriorityRouter,
   private val alertAudio: AlertAudioManager? = null,
   private val voiceTransceiver: com.itantra.data.audio.VoiceTransceiver? = null,
-  @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context? = null
+  @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context? = null,
+  private val bleRssiScanner: BleRssiScanner? = null,
+  private val sirenPlayer: SirenPlayer? = null,
+  private val performanceMonitor: PerformanceMonitor? = null,
 ) : ViewModel() {
   private val _state = MutableStateFlow(TransceiverUiState())
   val state: StateFlow<TransceiverUiState> = _state
@@ -35,6 +42,10 @@ class TransceiverViewModel @Inject constructor(
   @Volatile private var lastFloorReleaseTime: Long = 0L
   private var playbackJob: Job? = null
   private var floorWatchdogJob: Job? = null
+  /** Coroutine job for active BLE distance collection (Rescue Beacon or Siren). */
+  private var proximityJob: Job? = null
+  /** Timestamp (ms) when VAD speech starts, for pipeline latency measurement. */
+  @Volatile private var pipelineStartMs: Long = -1L
 
   private fun toBcp47(lang: com.itantra.domain.model.Language): String = when (lang) {
     com.itantra.domain.model.Language.HINDI -> "hi-IN"
@@ -49,6 +60,37 @@ class TransceiverViewModel @Inject constructor(
     com.itantra.domain.model.Language.ENGLISH -> {
       val def = try { java.util.Locale.getDefault().toLanguageTag() } catch (_: Throwable) { "en-US" }
       if (def.startsWith("en", ignoreCase = true)) def else "en-US"
+    }
+  }
+
+  /**
+   * Heuristically detect language from transcribed text using Unicode block prevalence.
+   * Returns null if text is ambiguous or empty (so caller keeps the current language).
+   */
+  private fun detectLanguageFromText(text: String): com.itantra.domain.model.Language? {
+    if (text.isBlank()) return null
+    val devanagari = text.count { it.code in 0x0900..0x097F }  // Hindi, Marathi
+    val latin      = text.count { it.code in 0x0041..0x007A }  // English
+    val gujarati   = text.count { it.code in 0x0A80..0x0AFF }
+    val kannada    = text.count { it.code in 0x0C80..0x0CFF }
+    val malayalam  = text.count { it.code in 0x0D00..0x0D7F }
+    val tamil      = text.count { it.code in 0x0B80..0x0BFF }
+    val telugu     = text.count { it.code in 0x0C00..0x0C7F }
+    val oriya      = text.count { it.code in 0x0B00..0x0B7F }
+    val bengali    = text.count { it.code in 0x0980..0x09FF }
+    val total = text.length.toFloat().coerceAtLeast(1f)
+    // Only return a language if it has strong signal (>40% of chars)
+    return when {
+      latin     / total > 0.40f -> com.itantra.domain.model.Language.ENGLISH
+      gujarati  / total > 0.40f -> com.itantra.domain.model.Language.GUJARATI
+      kannada   / total > 0.40f -> com.itantra.domain.model.Language.KANNADA
+      malayalam / total > 0.40f -> com.itantra.domain.model.Language.MALAYALAM
+      tamil     / total > 0.40f -> com.itantra.domain.model.Language.TAMIL
+      telugu    / total > 0.40f -> com.itantra.domain.model.Language.TELUGU
+      oriya     / total > 0.40f -> com.itantra.domain.model.Language.ODIA
+      bengali   / total > 0.40f -> com.itantra.domain.model.Language.BENGALI
+      devanagari / total > 0.40f -> com.itantra.domain.model.Language.HINDI  // Hindi as default Devanagari
+      else -> null
     }
   }
 
@@ -99,11 +141,40 @@ class TransceiverViewModel @Inject constructor(
         startPeerDiscovery()
       }
     }
+    // Start performance monitoring (silent no-op if PerformanceMonitor not injected)
+    performanceMonitor?.let { pm ->
+      vmScope.launch {
+        pm.perfFlow(1000L).collect { perf ->
+          // Inject current pipeline latency into the perf snapshot
+          val latency = _state.value.devicePerf?.pipelineLatencyMs ?: -1L
+          _state.value = _state.value.copy(devicePerf = perf.copy(pipelineLatencyMs = latency))
+        }
+      }
+    }
     vmScope.launch {
       transportManager.state.collect { connState ->
         _state.value = _state.value.copy(connectionState = connState)
-        if (connState == TransportState.DISCONNECTED && isDalvik()) {
-          refreshNetworkInfo()
+        when (connState) {
+          TransportState.CONNECTED -> {
+            val remoteIp = transportManager.remoteAddress?.trim()?.removePrefix("/")
+            if (!remoteIp.isNullOrBlank()) {
+              _state.value = _state.value.copy(
+                peerConnectionStates = _state.value.peerConnectionStates + (remoteIp to PeerConnectionStatus.CONNECTED)
+              )
+            }
+          }
+          TransportState.DISCONNECTED -> {
+            val updatedMap = _state.value.peerConnectionStates.mapValues { (_, status) ->
+              if (status == PeerConnectionStatus.CONNECTED) PeerConnectionStatus.DISCONNECTED
+              else if (status == PeerConnectionStatus.CONNECTING) PeerConnectionStatus.FAILED
+              else status
+            }
+            _state.value = _state.value.copy(peerConnectionStates = updatedMap)
+            if (isDalvik()) {
+              refreshNetworkInfo()
+            }
+          }
+          else -> {}
         }
       }
     }
@@ -179,6 +250,7 @@ class TransceiverViewModel @Inject constructor(
         if (nextUi == PttUiState.LISTENING) {
           capturedSpeech = ""
           isSpeechFrameSent = false
+          pipelineStartMs = System.currentTimeMillis()   // start pipeline clock
           _state.value = _state.value.copy(
             pttUiState = PttUiState.LISTENING,
             currentTranscript = "Listening... Speak now"
@@ -201,6 +273,13 @@ class TransceiverViewModel @Inject constructor(
                   val prev = capturedSpeech
                   capturedSpeech = result
                   _state.value = _state.value.copy(currentTranscript = result)
+                  // Auto language detection: detect from result if enabled
+                  if (_state.value.isAutoLangDetect) {
+                    val detected = detectLanguageFromText(result)
+                    if (detected != null && detected != _state.value.srcLang) {
+                      _state.value = _state.value.copy(srcLang = detected, dstLang = detected)
+                    }
+                  }
                   val recentlyReleased = (System.currentTimeMillis() - lastFloorReleaseTime) < 6000
                   if (_state.value.pttUiState == PttUiState.SENDING || (prev.isBlank() && recentlyReleased)) {
                     sendSpeechFrame(result)
@@ -267,7 +346,14 @@ class TransceiverViewModel @Inject constructor(
         pttMachine.setMode(newMode)
       }
       is TransceiverIntent.SelectLanguage -> {
-        _state.value = _state.value.copy(srcLang = intent.src, dstLang = intent.dst)
+        _state.value = _state.value.copy(
+          srcLang = intent.src,
+          dstLang = intent.dst,
+          isAutoLangDetect = false
+        )
+      }
+      is TransceiverIntent.ToggleAutoLangDetect -> {
+        _state.value = _state.value.copy(isAutoLangDetect = !_state.value.isAutoLangDetect)
       }
       is TransceiverIntent.SendAlert -> {
         // Optimistically show SOS SENT; switch to Failure on transport error; auto-clear after 3s
@@ -299,17 +385,38 @@ class TransceiverViewModel @Inject constructor(
         }
       }
       is TransceiverIntent.ConnectPeer -> {
+        val targetIp = intent.peerId.trim()
+        if (targetIp.isNotBlank()) {
+          _state.value = _state.value.copy(
+            peerConnectionStates = _state.value.peerConnectionStates + (targetIp to PeerConnectionStatus.CONNECTING)
+          )
+        }
         vmScope.launch {
-          if (intent.peerId.isBlank()) {
+          if (targetIp.isBlank()) {
             transportManager.startServer()
           } else {
-            transportManager.connectTo(intent.peerId, 4242)
+            val res = transportManager.connectTo(targetIp, 4242)
+            if (res.isSuccess) {
+              _state.value = _state.value.copy(
+                peerConnectionStates = _state.value.peerConnectionStates + (targetIp to PeerConnectionStatus.CONNECTED)
+              )
+            } else {
+              _state.value = _state.value.copy(
+                peerConnectionStates = _state.value.peerConnectionStates + (targetIp to PeerConnectionStatus.FAILED)
+              )
+            }
           }
         }
       }
       is TransceiverIntent.Disconnect -> {
         transportManager.disconnect()
-        _state.value = _state.value.copy(connectionState = TransportState.DISCONNECTED)
+        val updatedMap = _state.value.peerConnectionStates.mapValues { (_, status) ->
+          if (status == PeerConnectionStatus.CONNECTED) PeerConnectionStatus.DISCONNECTED else status
+        }
+        _state.value = _state.value.copy(
+          connectionState = TransportState.DISCONNECTED,
+          peerConnectionStates = updatedMap
+        )
       }
       is TransceiverIntent.RefreshNetwork -> {
         refreshNetworkInfo()
@@ -318,6 +425,102 @@ class TransceiverViewModel @Inject constructor(
         refreshNetworkInfo()
         startPeerDiscovery()
       }
+
+      // ── Feature A: Find My Phone ───────────────────────────────────────────
+      is TransceiverIntent.StartFindMyPhone -> {
+        val scanner = bleRssiScanner
+        if (scanner == null) {
+          _state.value = _state.value.copy(findMyPhoneError = "BLE not available on this device")
+          return
+        }
+        val peer = _state.value.discoveredPeers.firstOrNull()
+        val peerLabel = peer?.name ?: "nearest device"
+        _state.value = _state.value.copy(
+          findMyPhoneActive = true,
+          findMyPhonePeerName = peerLabel,
+          findMyPhoneError = null
+        )
+        proximityJob?.cancel()
+        // Use named peer flow if a peer is known; otherwise scan any nearby BLE device
+        val distFlow = if (peer != null) scanner.distanceFlow(peer.name)
+                       else scanner.nearestDeviceFlow()
+        proximityJob = vmScope.launch {
+          try {
+            distFlow.collect { metres ->
+              _state.value = _state.value.copy(findMyPhoneDistanceMetres = metres)
+            }
+          } catch (e: Exception) {
+            _state.value = _state.value.copy(
+              findMyPhoneError = "Signal lost — move to an open area",
+              findMyPhoneDistanceMetres = -1f
+            )
+          }
+        }
+      }
+      is TransceiverIntent.StopFindMyPhone -> {
+        proximityJob?.cancel()
+        proximityJob = null
+        _state.value = _state.value.copy(
+          findMyPhoneActive = false,
+          findMyPhoneDistanceMetres = -1f,
+          findMyPhoneError = null
+        )
+      }
+
+      // ── Feature B: Performance HUD ─────────────────────────────────────────
+      is TransceiverIntent.TogglePerfHud -> {
+        _state.value = _state.value.copy(showPerfHud = !_state.value.showPerfHud)
+      }
+
+      // ── Feature C: Locate via Siren ────────────────────────────────────────
+      is TransceiverIntent.StartSirenLocate -> {
+        val player = sirenPlayer
+        if (player == null) return
+        _state.value = _state.value.copy(sirenLocateActive = true, sirenDistanceMetres = -1f)
+        // Build distance flow: named peer > nearest device > empty (siren will still loop at slow beep)
+        val scanner = bleRssiScanner
+        val peer    = _state.value.discoveredPeers.firstOrNull()
+        val distFlow = when {
+          scanner != null && peer != null -> scanner.distanceFlow(peer.name)
+          scanner != null                -> scanner.nearestDeviceFlow()
+          else                           -> kotlinx.coroutines.flow.emptyFlow()
+        }
+        // Start the siren — it loops continuously regardless of BLE updates
+        player.start(vmScope, distFlow)
+        // Also update UI state when distance changes
+        proximityJob?.cancel()
+        proximityJob = vmScope.launch {
+          try {
+            distFlow.collect { d ->
+              val (freqHz, _) = player.mappingForDistance(d)
+              _state.value = _state.value.copy(sirenDistanceMetres = d, sirenFreqHz = freqHz)
+            }
+          } catch (_: Throwable) {}
+        }
+      }
+      is TransceiverIntent.StopSirenLocate -> {
+        sirenPlayer?.stop()
+        proximityJob?.cancel()
+        proximityJob = null
+        _state.value = _state.value.copy(sirenLocateActive = false, sirenDistanceMetres = -1f)
+      }
+      is TransceiverIntent.TriggerRemoteSiren -> {
+        val sirenFrame = Frame(
+          mode = _state.value.channelMode,
+          isAlert = false,
+          isStream = false,
+          pttPressed = false,
+          isSiren = true,
+          srcLang = _state.value.srcLang,
+          dstLang = _state.value.dstLang,
+          seqId = (seqCounter++) % 65535,
+          payloadText = ""
+        )
+        vmScope.launch {
+          try { transportManager.send(sirenFrame) } catch (_: Throwable) {}
+        }
+      }
+
       is TransceiverIntent.OnFrameReceived -> {
         val frame = intent.frame
 
@@ -359,7 +562,13 @@ class TransceiverViewModel @Inject constructor(
           return
         }
 
-        // 2. Non-empty payload: Voice / Text / Alert message
+        // 2. Non-empty payload OR siren flag: Voice / Text / Alert / Siren message
+        if (frame.isSiren) {
+          // Remote siren request — play a fixed-freq siren locally
+          sirenPlayer?.start(vmScope, flowOf(-1f))
+          return
+        }
+
         val item = MessageItem(frame, frame.isAlert, isOutgoing = false, System.currentTimeMillis(), 2.5)
         _state.value = _state.value.copy(
           messageHistory = _state.value.messageHistory + item,
@@ -395,6 +604,15 @@ class TransceiverViewModel @Inject constructor(
     playbackJob = vmScope.launch {
       try {
         val langTag = toBcp47(item.frame.dstLang)
+        // Record pipeline latency (VAD start → TTS begin) for the HUD
+        if (pipelineStartMs > 0L) {
+          val elapsedMs = System.currentTimeMillis() - pipelineStartMs
+          pipelineStartMs = -1L
+          val current = _state.value.devicePerf
+          if (current != null) {
+            _state.value = _state.value.copy(devicePerf = current.copy(pipelineLatencyMs = elapsedMs))
+          }
+        }
         voiceTransceiver?.speak(item.frame.payloadText, langTag)
       } catch (_: Throwable) {}
 
