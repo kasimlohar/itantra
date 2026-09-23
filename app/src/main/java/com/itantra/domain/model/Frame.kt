@@ -13,6 +13,8 @@ data class Frame(
     val dstLang: Language,
     val seqId: Int,
     val payloadText: String,
+    /** True when this frame carries a siren-locate signal (FLAG_SIREN bit4). */
+    val isSiren: Boolean = false,
 ) {
     init {
         require(seqId in 0..65535) { "seqId must be 0..65535, got $seqId" }
