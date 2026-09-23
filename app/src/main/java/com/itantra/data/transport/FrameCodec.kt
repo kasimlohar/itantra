@@ -28,6 +28,8 @@ object FrameCodec {
     private const val CRC_SIZE = 2
     private const val MIN_FRAME_SIZE = HEADER_SIZE + CRC_SIZE // 12, payload 0
     private const val MAX_PAYLOAD = 2048
+    /** Bit 4 of byte B3 (previously RSV=0) — siren-locate signal. */
+    const val FLAG_SIREN: Int = 0x10
 
     private val VALID_LANG_CODES: Set<Byte> = Language.entries.map { it.code }.toSet()
 
@@ -46,7 +48,8 @@ object FrameCodec {
         if (frame.isAlert) flags = flags or 0x80
         if (frame.isStream) flags = flags or 0x40
         if (frame.pttPressed) flags = flags or 0x20
-        // bits 4-0 reserved zero
+        if (frame.isSiren) flags = flags or FLAG_SIREN  // bit4 — siren locate
+        // bits 3-0 reserved zero
         out[3] = flags.toByte()
         out[4] = frame.srcLang.code
         out[5] = frame.dstLang.code
@@ -83,7 +86,8 @@ object FrameCodec {
         val isAlert = (flags and 0x80) != 0
         val isStream = (flags and 0x40) != 0
         val pttPressed = (flags and 0x20) != 0
-        // reserved bits are ignored on decode (but encode zeroes them)
+        val isSiren = (flags and FLAG_SIREN) != 0
+        // bits 3-0 reserved zero on encode (ignored on decode)
 
         val srcCode = bytes[4]
         val dstCode = bytes[5]
@@ -132,6 +136,7 @@ object FrameCodec {
             dstLang = dstLang,
             seqId = seqId,
             payloadText = text,
+            isSiren = isSiren,
         )
     }
 }

@@ -17,6 +17,7 @@ class WifiDirectTransport(
   @Volatile private var socket: Socket? = null
   private var acceptJob: Job? = null
   override val isConnected: Boolean get() = socket?.let { it.isConnected && !it.isClosed } == true
+  val remoteAddress: String? get() = socket?.inetAddress?.hostAddress
   fun getPort(): Int = server?.localPort ?: port
 
   private fun isAndroid(): Boolean = try { Class.forName("android.os.Build") != null } catch (_: Exception) { false }

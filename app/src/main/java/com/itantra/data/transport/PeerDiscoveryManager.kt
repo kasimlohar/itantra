@@ -15,7 +15,11 @@ data class DiscoveredPeer(
     val name: String,
     val ip: String,
     val port: Int = 4242,
-    val lastSeen: Long = System.currentTimeMillis()
+    val lastSeen: Long = System.currentTimeMillis(),
+    /** Latest RSSI in dBm from BLE scan; -100 = no reading yet. */
+    val rssi: Int = -100,
+    /** Estimated distance in metres via log-distance path-loss model; -1 = unknown. */
+    val estimatedMetres: Float = -1f
 )
 
 /**

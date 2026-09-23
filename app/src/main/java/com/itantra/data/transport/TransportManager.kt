@@ -14,6 +14,7 @@ class TransportManager(
     bt.isConnected -> bt
     else -> null
   }
+  val remoteAddress: String? get() = (wifi as? WifiDirectTransport)?.remoteAddress
   val incomingFrames: kotlinx.coroutines.flow.Flow<com.itantra.domain.model.Frame> = kotlinx.coroutines.flow.merge(wifi.incomingFrames, bt.incomingFrames)
 
   init {
