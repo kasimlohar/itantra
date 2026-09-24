@@ -157,7 +157,7 @@ fun LocateScreen(
     val proximity = if (metres >= 0f) (1f - metres / MAX_DISTANCE_FOR_RING).coerceIn(0f, 1f) else 0f
     val ringColor = lerp(ITantraColors.Error, ITantraColors.Success, proximity)
 
-    val distanceLabel = if (metres >= 0f) "~%.0f m".format(metres) else "Searching…"
+    val distanceLabel = if (metres >= 0f) "~%.0f m (est.)".format(metres) else "Measuring…"
     val pillLabel = if (state.sirenLocateActive) "ACTIVE" else "STANDBY"
     val pillType = if (state.sirenLocateActive) PillType.CONNECTED else PillType.STANDBY
 
@@ -309,13 +309,21 @@ fun LocateScreen(
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            val cmdStatus = state.sirenCommandStatus
+            val sirenActive = cmdStatus == com.itantra.presentation.transceiver.SirenCommandStatus.ACTIVE
+
+            // ── Start Siren button ────────────────────────────────────────────
             Button(
                 onClick = { onIntent(TransceiverIntent.TriggerRemoteSiren) },
+                enabled = !sirenActive &&
+                    cmdStatus != com.itantra.presentation.transceiver.SirenCommandStatus.SENDING,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = ITantraShapes.Button,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = ITantraColors.Primary,
-                    contentColor = Color.White
+                    contentColor = Color.White,
+                    disabledContainerColor = ITantraColors.Primary.copy(alpha = 0.4f),
+                    disabledContentColor = Color.White.copy(alpha = 0.6f)
                 )
             ) {
                 Icon(
@@ -325,13 +333,49 @@ fun LocateScreen(
                 )
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    "Trigger Remote Siren",
+                    when (cmdStatus) {
+                        com.itantra.presentation.transceiver.SirenCommandStatus.SENDING -> "Sending…"
+                        com.itantra.presentation.transceiver.SirenCommandStatus.ACTIVE  -> "Siren Active on Target"
+                        else -> "Start Siren on Target"
+                    },
                     fontWeight = FontWeight.SemiBold
                 )
             }
+
+            // ── Stop Siren button ─────────────────────────────────────────────
+            if (sirenActive) {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { onIntent(TransceiverIntent.StopRemoteSiren) },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = ITantraShapes.Button,
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                        contentColor = ITantraColors.Error
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp, ITantraColors.Error.copy(alpha = 0.6f)
+                    )
+                ) {
+                    Text("Stop Siren on Target", fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            // ── Status / error text ───────────────────────────────────────────
             Text(
-                text = "Activates siren on peer's device",
-                style = ITantraType.caption,
+                text = when (cmdStatus) {
+                    com.itantra.presentation.transceiver.SirenCommandStatus.IDLE        -> "Activates siren on peer's device"
+                    com.itantra.presentation.transceiver.SirenCommandStatus.SENDING     -> "Sending command to target…"
+                    com.itantra.presentation.transceiver.SirenCommandStatus.ACTIVE      -> "✓ Target device is sounding"
+                    com.itantra.presentation.transceiver.SirenCommandStatus.NO_TARGET   -> "⚠ Connect to a target device first"
+                    com.itantra.presentation.transceiver.SirenCommandStatus.UNREACHABLE -> "⚠ Target unreachable — check connection"
+                },
+                style = ITantraType.caption.copy(
+                    color = when (cmdStatus) {
+                        com.itantra.presentation.transceiver.SirenCommandStatus.NO_TARGET,
+                        com.itantra.presentation.transceiver.SirenCommandStatus.UNREACHABLE -> ITantraColors.Error
+                        com.itantra.presentation.transceiver.SirenCommandStatus.ACTIVE      -> ITantraColors.Success
+                        else -> ITantraColors.TextSecondary
+                    }
+                ),
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center
             )

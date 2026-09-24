@@ -4,7 +4,12 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.EaseInOutCubic
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -32,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,10 +87,15 @@ fun FindMyPhoneScreen(
     val permissions = if (Build.VERSION.SDK_INT >= 31) {
         arrayOf(
             Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.BLUETOOTH_CONNECT
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_ADVERTISE,
+            Manifest.permission.ACCESS_FINE_LOCATION
         )
     } else {
-        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
     }
 
     val permLauncher = rememberLauncherForActivityResult(
@@ -97,6 +108,12 @@ fun FindMyPhoneScreen(
         }
         if (granted) onIntent(TransceiverIntent.StartFindMyPhone)
         else showRationale = true
+    }
+
+    LaunchedEffect(Unit) {
+        if (!state.findMyPhoneActive) {
+            permLauncher.launch(permissions)
+        }
     }
 
     if (showRationale) {
@@ -145,9 +162,24 @@ fun FindMyPhoneScreen(
         label = "proximity fill"
     )
     val ringColor = lerp(ITantraColors.Error, ITantraColors.Success, animatedFill)
-    val distanceLabel = if (metres >= 0f) "~%.0f m".format(metres) else LABEL_UNKNOWN
+    val distanceLabel = when {
+        metres >= 0f -> "~%.0f m (est.)".format(metres)
+        state.findMyPhoneActive -> "Searching signal…"
+        else -> "Ready to scan"
+    }
     val pillType = if (state.findMyPhoneActive) PillType.SEARCHING else PillType.STANDBY
     val pillLabel = if (state.findMyPhoneActive) "SCANNING" else "STANDBY"
+
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
 
     // ── Layout ────────────────────────────────────────────────────────────────
     Column(
@@ -158,7 +190,7 @@ fun FindMyPhoneScreen(
     ) {
         AppHeader(
             title = "Rescue Beacon",
-            subtitle = if (state.findMyPhonePeerName.isNotBlank())
+            subtitle = if (state.findMyPhonePeerName.isNotBlank() && state.findMyPhonePeerName != "nearest beacon")
                 "Homing on: ${state.findMyPhonePeerName}"
             else
                 "Homing in on survivor's beacon",
@@ -213,11 +245,16 @@ fun FindMyPhoneScreen(
                             center = center
                         )
                     }
+                    val strokeColor = when {
+                        isFilled -> ringColor
+                        state.findMyPhoneActive && i == numRings -> ITantraColors.Primary.copy(alpha = pulseAlpha)
+                        else -> ITantraColors.Border
+                    }
                     drawCircle(
-                        color = if (isFilled) ringColor else ITantraColors.Border,
+                        color = strokeColor,
                         radius = radius,
                         center = center,
-                        style = Stroke(width = if (i == 1) 4f else 2f)
+                        style = Stroke(width = if (i == 1 || (state.findMyPhoneActive && i == numRings)) 4f else 2f)
                     )
                 }
             }
@@ -226,15 +263,25 @@ fun FindMyPhoneScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = distanceLabel,
-                    fontSize = 36.sp,
+                    fontSize = if (metres >= 0f) 36.sp else 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (metres >= 0f) ringColor else ITantraColors.TextSecondary,
+                    color = when {
+                        metres >= 0f -> ringColor
+                        state.findMyPhoneActive -> ITantraColors.Primary
+                        else -> ITantraColors.TextSecondary
+                    },
                     textAlign = TextAlign.Center
                 )
                 if (metres >= 0f) {
                     Text(
                         text = if (metres < 2f) "You're close!" else "Keep moving",
                         style = ITantraType.bodySmall,
+                        textAlign = TextAlign.Center
+                    )
+                } else if (state.findMyPhoneActive) {
+                    Text(
+                        text = "Broadcasting & listening...",
+                        style = ITantraType.bodySmall.copy(color = ITantraColors.TextSecondary),
                         textAlign = TextAlign.Center
                     )
                 }

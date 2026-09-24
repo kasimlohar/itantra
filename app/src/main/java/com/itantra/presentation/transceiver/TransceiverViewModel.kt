@@ -434,16 +434,18 @@ class TransceiverViewModel @Inject constructor(
           return
         }
         val peer = _state.value.discoveredPeers.firstOrNull()
-        val peerLabel = peer?.name ?: "nearest device"
+        val peerLabel = peer?.name ?: "nearest beacon"
         _state.value = _state.value.copy(
           findMyPhoneActive = true,
           findMyPhonePeerName = peerLabel,
           findMyPhoneError = null
         )
+        // Broadcast this phone's BLE beacon so the other device can home in
+        scanner.startBeacon()
+
         proximityJob?.cancel()
-        // Use named peer flow if a peer is known; otherwise scan any nearby BLE device
-        val distFlow = if (peer != null) scanner.distanceFlow(peer.name)
-                       else scanner.nearestDeviceFlow()
+        // Use scanFlow: prioritizes iTantra beacons and falls back gracefully to nearest device
+        val distFlow = scanner.scanFlow(peer?.name)
         proximityJob = vmScope.launch {
           try {
             distFlow.collect { metres ->
@@ -458,6 +460,7 @@ class TransceiverViewModel @Inject constructor(
         }
       }
       is TransceiverIntent.StopFindMyPhone -> {
+        bleRssiScanner?.stopBeacon()
         proximityJob?.cancel()
         proximityJob = null
         _state.value = _state.value.copy(
@@ -477,14 +480,11 @@ class TransceiverViewModel @Inject constructor(
         val player = sirenPlayer
         if (player == null) return
         _state.value = _state.value.copy(sirenLocateActive = true, sirenDistanceMetres = -1f)
-        // Build distance flow: named peer > nearest device > empty (siren will still loop at slow beep)
         val scanner = bleRssiScanner
+        scanner?.startBeacon()
         val peer    = _state.value.discoveredPeers.firstOrNull()
-        val distFlow = when {
-          scanner != null && peer != null -> scanner.distanceFlow(peer.name)
-          scanner != null                -> scanner.nearestDeviceFlow()
-          else                           -> kotlinx.coroutines.flow.emptyFlow()
-        }
+        val distFlow = if (scanner != null) scanner.scanFlow(peer?.name)
+                       else kotlinx.coroutines.flow.emptyFlow()
         // Start the siren — it loops continuously regardless of BLE updates
         player.start(vmScope, distFlow)
         // Also update UI state when distance changes
@@ -500,31 +500,91 @@ class TransceiverViewModel @Inject constructor(
       }
       is TransceiverIntent.StopSirenLocate -> {
         sirenPlayer?.stop()
+        bleRssiScanner?.stopBeacon()
         proximityJob?.cancel()
         proximityJob = null
         _state.value = _state.value.copy(sirenLocateActive = false, sirenDistanceMetres = -1f)
       }
       is TransceiverIntent.TriggerRemoteSiren -> {
+        // Guard: require an active transport connection before sending
+        if (_state.value.connectionState != TransportState.CONNECTED) {
+          _state.value = _state.value.copy(
+            sirenCommandStatus = SirenCommandStatus.NO_TARGET
+          )
+          return
+        }
+        _state.value = _state.value.copy(sirenCommandStatus = SirenCommandStatus.SENDING)
         val sirenFrame = Frame(
           mode = _state.value.channelMode,
           isAlert = false,
           isStream = false,
           pttPressed = false,
           isSiren = true,
+          // Use a non-empty sentinel payload ("SIREN") so the receiver does NOT
+          // mistake this for a PTT floor-control frame (empty-payload check).
+          payloadText = "SIREN",
           srcLang = _state.value.srcLang,
           dstLang = _state.value.dstLang,
-          seqId = (seqCounter++) % 65535,
-          payloadText = ""
+          seqId = (seqCounter++) % 65535
         )
         vmScope.launch {
-          try { transportManager.send(sirenFrame) } catch (_: Throwable) {}
+          try {
+            transportManager.send(sirenFrame)
+            // Controller sent successfully — mark Active; controller stays silent.
+            _state.value = _state.value.copy(sirenCommandStatus = SirenCommandStatus.ACTIVE)
+          } catch (_: Throwable) {
+            _state.value = _state.value.copy(sirenCommandStatus = SirenCommandStatus.UNREACHABLE)
+          }
+        }
+      }
+      is TransceiverIntent.StopRemoteSiren -> {
+        if (_state.value.connectionState != TransportState.CONNECTED) {
+          _state.value = _state.value.copy(sirenCommandStatus = SirenCommandStatus.NO_TARGET)
+          return
+        }
+        val stopFrame = Frame(
+          mode = _state.value.channelMode,
+          isAlert = false,
+          isStream = false,
+          pttPressed = false,
+          isSiren = true,
+          payloadText = "SIREN_STOP",
+          srcLang = _state.value.srcLang,
+          dstLang = _state.value.dstLang,
+          seqId = (seqCounter++) % 65535
+        )
+        vmScope.launch {
+          try {
+            transportManager.send(stopFrame)
+            _state.value = _state.value.copy(sirenCommandStatus = SirenCommandStatus.IDLE)
+          } catch (_: Throwable) {}
         }
       }
 
       is TransceiverIntent.OnFrameReceived -> {
         val frame = intent.frame
 
-        // 1. Check if this is a PTT Floor Control Frame (empty payload)
+        // 1. Siren command check FIRST — siren frames carry an empty or sentinel payload
+        //    and must be handled before the PTT empty-payload early-return below.
+        if (frame.isSiren) {
+          when (frame.payloadText) {
+            "SIREN" -> {
+              // TARGET phone: received remote siren command — play siren on this device.
+              sirenPlayer?.start(vmScope, kotlinx.coroutines.flow.flowOf(-1f))
+            }
+            "SIREN_STOP" -> {
+              // TARGET phone: received remote stop command — stop siren on this device.
+              sirenPlayer?.stop()
+            }
+            // Legacy empty-payload siren frames (pre-fix): treat as start.
+            else -> {
+              sirenPlayer?.start(vmScope, kotlinx.coroutines.flow.flowOf(-1f))
+            }
+          }
+          return
+        }
+
+        // 2. Check if this is a PTT Floor Control Frame (empty payload)
         if (frame.payloadText.isEmpty()) {
           val pttEv = pttMachine.onRemoteFrame(frame)
           when (pttEv) {
@@ -562,12 +622,7 @@ class TransceiverViewModel @Inject constructor(
           return
         }
 
-        // 2. Non-empty payload OR siren flag: Voice / Text / Alert / Siren message
-        if (frame.isSiren) {
-          // Remote siren request — play a fixed-freq siren locally
-          sirenPlayer?.start(vmScope, flowOf(-1f))
-          return
-        }
+        // 3. Non-empty, non-siren payload: Voice / Text / Alert
 
         val item = MessageItem(frame, frame.isAlert, isOutgoing = false, System.currentTimeMillis(), 2.5)
         _state.value = _state.value.copy(
@@ -631,6 +686,7 @@ class TransceiverViewModel @Inject constructor(
     super.onCleared()
     peerDiscoveryManager?.stop()
     peerDiscoveryManager = null
+    try { bleRssiScanner?.stopBeacon() } catch (_: Throwable) {}
     try { voiceTransceiver?.release() } catch (_: Throwable) {}
     vmScope.cancel()
   }

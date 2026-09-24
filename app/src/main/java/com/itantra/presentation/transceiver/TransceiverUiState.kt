@@ -23,6 +23,20 @@ sealed class SosToastState {
     object Failure : SosToastState()
 }
 
+/** Controller-side state for the "Start/Stop Remote Siren" button. */
+enum class SirenCommandStatus {
+    /** No siren command has been issued yet (default). */
+    IDLE,
+    /** Command is being transmitted to the target. */
+    SENDING,
+    /** Command was sent and confirmed; target should be sounding. */
+    ACTIVE,
+    /** No target device is connected — cannot send command. */
+    NO_TARGET,
+    /** Transport send failed. */
+    UNREACHABLE,
+}
+
 data class MessageItem(
     val frame: Frame,
     val isAlert: Boolean,
@@ -70,6 +84,8 @@ data class TransceiverUiState(
   /** Estimated distance in metres from BLE RSSI during siren locate; -1 = unknown. */
   val sirenDistanceMetres: Float = -1f,
   val sirenFreqHz: Int = 440,
+  /** Controller-side status for the "Start/Stop Remote Siren" command. */
+  val sirenCommandStatus: SirenCommandStatus = SirenCommandStatus.IDLE,
 
   // ── Feature D: Language Auto-Detection ─────────────────────────────────────
   /** When true, the ASR engine auto-detects language and updates [srcLang] on each result. */

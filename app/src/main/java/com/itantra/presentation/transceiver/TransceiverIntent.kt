@@ -30,6 +30,8 @@ sealed interface TransceiverIntent {
   data object StopSirenLocate : TransceiverIntent
   /** Victim sends a siren frame to trigger the rescuer's device to play a siren. */
   data object TriggerRemoteSiren : TransceiverIntent
+  /** Sends a siren-stop command to the target device. */
+  data object StopRemoteSiren : TransceiverIntent
 
   // ── Feature D: Language Auto-Detection ───────────────────────────────────
   /** Toggle automatic language detection on/off. */
